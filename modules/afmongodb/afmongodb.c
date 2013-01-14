@@ -301,12 +301,13 @@ afmongodb_vp_obj_end(const gchar *name,
                      const gchar *prev, gpointer *prev_data,
                      gpointer user_data)
 {
+  MongoDBDestDriver *self = (MongoDBDestDriver *)user_data;
   bson *root;
 
   if (prev_data)
     root = (bson *)*prev_data;
   else
-    root = (bson *)user_data;
+    root = self->bson;
 
   if (prefix_data)
     {
@@ -325,13 +326,97 @@ afmongodb_vp_process_value(const gchar *name, const gchar *prefix,
                            gpointer *prefix_data, gpointer user_data)
 {
   bson *o;
+  MongoDBDestDriver *self = (MongoDBDestDriver *)user_data;
+  gboolean fallback = self->super.type_cast_strictness & TYPE_CAST_FALLBACK_TO_STRING;
 
   if (prefix_data)
     o = (bson *)*prefix_data;
   else
-    o = (bson *)user_data;
+    o = self->bson;
 
-  bson_append_string (o, name, value, -1);
+  switch (type)
+    {
+    case TYPE_HINT_BOOLEAN:
+      {
+        gboolean b;
+
+        if (type_cast_to_boolean (value, &b, NULL))
+          bson_append_boolean (o, name, b);
+        else
+          {
+            gboolean r = type_cast_drop_helper(self->super.type_cast_strictness,
+                                               value, "boolean");
+
+            if (fallback)
+              bson_append_string (o, name, value, -1);
+            else
+              return r;
+          }
+        break;
+      }
+    case TYPE_HINT_INT32:
+      {
+        gint32 i;
+
+        if (type_cast_to_int32 (value, &i, NULL))
+          bson_append_int32 (o, name, i);
+        else
+          {
+            gboolean r = type_cast_drop_helper(self->super.type_cast_strictness,
+                                               value, "int32");
+
+            if (fallback)
+              bson_append_string (o, name, value, -1);
+            else
+              return r;
+          }
+        break;
+      }
+    case TYPE_HINT_INT64:
+      {
+        gint64 i;
+
+        if (type_cast_to_int64 (value, &i, NULL))
+          bson_append_int64 (o, name, i);
+        else
+          {
+            gboolean r = type_cast_drop_helper(self->super.type_cast_strictness,
+                                               value, "int64");
+
+            if (fallback)
+              bson_append_string(o, name, value, -1);
+            else
+              return r;
+          }
+
+        break;
+      }
+    case TYPE_HINT_DATETIME:
+      {
+        guint64 i;
+
+        if (type_cast_to_datetime_int (value, &i, NULL))
+          bson_append_utc_datetime (o, name, (gint64)i);
+        else
+          {
+            gboolean r = type_cast_drop_helper(self->super.type_cast_strictness,
+                                               value, "datetime");
+
+            if (fallback)
+              bson_append_string(o, name, value, -1);
+            else
+              return r;
+          }
+
+        break;
+      }
+    case TYPE_HINT_STRING:
+    case TYPE_HINT_LITERAL:
+      bson_append_string (o, name, value, -1);
+      break;
+    default:
+      return TRUE;
+    }
 
   return FALSE;
 }
@@ -361,12 +446,15 @@ afmongodb_worker_insert (MongoDBDestDriver *self)
   bson_append_oid (self->bson, "_id", oid);
   g_free (oid);
 
-  value_pairs_walk(self->vp,
-                   afmongodb_vp_obj_start,
-                   afmongodb_vp_process_value,
-                   afmongodb_vp_obj_end,
-                   msg, self->seq_num, self->bson);
+  success = value_pairs_walk(self->vp,
+                             afmongodb_vp_obj_start,
+                             afmongodb_vp_process_value,
+                             afmongodb_vp_obj_end,
+                             msg, self->seq_num, self);
   bson_finish (self->bson);
+
+  if (!success && !(self->super.type_cast_strictness & TYPE_CAST_DROP_MESSAGE))
+    success = TRUE;
 
   if (!mongo_sync_cmd_insert_n(self->conn, self->ns, 1,
                                (const bson **)&self->bson))
