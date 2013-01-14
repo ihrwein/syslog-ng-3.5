@@ -29,11 +29,13 @@
 #include "cfg.h"
 #include "value-pairs.h"
 #include "vptransform.h"
+#include "syslog-ng.h"
 
 typedef struct _TFJsonState
 {
   TFSimpleFuncState super;
   ValuePairs *vp;
+  gint tc_strictness;
 } TFJsonState;
 
 static gboolean
@@ -48,6 +50,8 @@ tf_json_prepare(LogTemplateFunction *self, gpointer s, LogTemplate *parent,
   if (!state->vp)
     return FALSE;
 
+  state->tc_strictness = parent->cfg->type_cast_strictness;
+
   /* Always replace a leading dot with an underscore. */
   vpts = value_pairs_transform_set_new(".*");
   value_pairs_transform_set_add_func(vpts, value_pairs_new_transform_replace_prefix(".", "_"));
@@ -60,6 +64,7 @@ typedef struct
 {
   gboolean need_comma;
   GString *buffer;
+  gint tc_strictness;
 } json_state_t;
 
 static inline void
@@ -163,37 +168,97 @@ tf_json_obj_end(const gchar *name,
 }
 
 static gboolean
-tf_json_value(const gchar *name, const gchar *prefix,
-              TypeHint type, const gchar *value,
-              gpointer *prefix_data, gpointer user_data)
+tf_json_append_value(const gchar *name, const gchar *value,
+                     json_state_t *state, gboolean quoted)
 {
-  json_state_t *state = (json_state_t *)user_data;
-
   if (state->need_comma)
     g_string_append_c(state->buffer, ',');
 
   g_string_append_c(state->buffer, '"');
   g_string_append_escaped(state->buffer, name);
-  g_string_append(state->buffer, "\":\"");
+
+  if (quoted)
+    g_string_append(state->buffer, "\":\"");
+  else
+    g_string_append(state->buffer, "\":");
+
   g_string_append_escaped(state->buffer, value);
-  g_string_append_c(state->buffer, '"');
+
+  if (quoted)
+    g_string_append_c(state->buffer, '"');
+
+  return TRUE;
+}
+
+static gboolean
+tf_json_value(const gchar *name, const gchar *prefix,
+              TypeHint type, const gchar *value,
+              gpointer *prefix_data, gpointer user_data)
+{
+  json_state_t *state = (json_state_t *)user_data;
+  gint tc_strictness = state->tc_strictness;
+
+  switch (type)
+    {
+    case TYPE_HINT_STRING:
+    case TYPE_HINT_DATETIME:
+    default:
+      tf_json_append_value(name, value, state, TRUE);
+      break;
+    case TYPE_HINT_LITERAL:
+      tf_json_append_value(name, value, state, FALSE);
+      break;
+    case TYPE_HINT_INT32:
+    case TYPE_HINT_INT64:
+    case TYPE_HINT_BOOLEAN:
+      {
+        gint32 i32;
+        gint64 i64;
+        gboolean b;
+        gboolean r = FALSE, fail = FALSE;
+        const gchar *v = value;
+
+        if (type == TYPE_HINT_INT32 &&
+            (fail = !type_cast_to_int32(value, &i32 , NULL)) == TRUE)
+          r = type_cast_drop_helper(tc_strictness, value, "int32");
+        else if (type == TYPE_HINT_INT64 &&
+            (fail = !type_cast_to_int64(value, &i64 , NULL)) == TRUE)
+          r = type_cast_drop_helper(tc_strictness, value, "int64");
+        else if (type == TYPE_HINT_BOOLEAN)
+          {
+            if ((fail = !type_cast_to_boolean(value, &b , NULL)) == TRUE)
+              r = type_cast_drop_helper(tc_strictness, value, "boolean");
+            else
+              v = b ? "true" : "false";
+          }
+
+        if (fail &&
+            !(tc_strictness & TYPE_CAST_FALLBACK_TO_STRING))
+          return r;
+
+        tf_json_append_value(name, v, state, fail);
+        break;
+      }
+    }
 
   state->need_comma = TRUE;
 
   return FALSE;
 }
 
-static void
-tf_json_append(GString *result, ValuePairs *vp, LogMessage *msg)
+static gboolean
+tf_json_append(GString *result, ValuePairs *vp,
+               gint strictness, LogMessage *msg)
 {
   json_state_t state;
 
   state.need_comma = FALSE;
   state.buffer = result;
+  state.tc_strictness = strictness;
 
-  value_pairs_walk(vp,
-                   tf_json_obj_start, tf_json_value, tf_json_obj_end,
-                   msg, 0, &state);
+  return value_pairs_walk(vp,
+                          tf_json_obj_start, tf_json_value, tf_json_obj_end,
+                          msg, 0, &state);
 }
 
 static void
@@ -202,9 +267,15 @@ tf_json_call(LogTemplateFunction *self, gpointer s,
 {
   TFJsonState *state = (TFJsonState *)s;
   gint i;
+  gboolean r = TRUE;
+  gsize orig_size = result->len;
 
   for (i = 0; i < args->num_messages; i++)
-    tf_json_append(result, state->vp, args->messages[i]);
+    r &= tf_json_append(result, state->vp,
+                        state->tc_strictness, args->messages[i]);
+
+  if (!r && state->tc_strictness & TYPE_CAST_DROP_MESSAGE)
+    g_string_set_size(result, orig_size);
 }
 
 static void

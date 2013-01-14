@@ -23,6 +23,51 @@ test_format_json_rekey(void)
                          "{\"_msg\":{\"text\":\"dotted\"}}");
 }
 
+void
+test_format_json_with_type_hints(void)
+{
+  assert_template_format("$(format-json i32=int32(1234))",
+                         "{\"i32\":1234}");
+  assert_template_format("$(format-json \"i=ifoo(\")",
+                         "{\"i\":\"ifoo(\"}");
+  assert_template_format("$(format-json b=boolean(TRUE))",
+                         "{\"b\":true}");
+}
+
+void
+test_format_json_strictness(void)
+{
+  configuration->type_cast_strictness = TYPE_CAST_DROP_MESSAGE;
+  assert_template_format("$(format-json x=y bad=boolean(blah) foo=bar)",
+                         "");
+  assert_template_format("$(format-json x=y bad=int32(blah) foo=bar)",
+                         "");
+  assert_template_format("$(format-json x=y bad=int64(blah) foo=bar)",
+                         "");
+
+  configuration->type_cast_strictness = TYPE_CAST_DROP_PROPERTY;
+  assert_template_format("$(format-json x=y bad=boolean(blah) foo=bar)",
+                         "{\"x\":\"y\",\"foo\":\"bar\"}");
+  assert_template_format("$(format-json x=y bad=boolean(blah))",
+                         "{\"x\":\"y\"}");
+  assert_template_format("$(format-json x=y bad=int32(blah))",
+                         "{\"x\":\"y\"}");
+  assert_template_format("$(format-json x=y bad=int64(blah))",
+                         "{\"x\":\"y\"}");
+
+  configuration->type_cast_strictness = TYPE_CAST_FALLBACK_TO_STRING;
+
+  assert_template_format("$(format-json x=y bad=boolean(blah) foo=bar)",
+                         "{\"x\":\"y\",\"foo\":\"bar\",\"bad\":\"blah\"}");
+  assert_template_format("$(format-json x=y bad=boolean(blah))",
+                         "{\"x\":\"y\",\"bad\":\"blah\"}");
+  assert_template_format("$(format-json x=y bad=int32(blah))",
+                         "{\"x\":\"y\",\"bad\":\"blah\"}");
+  assert_template_format("$(format-json x=y bad=int64(blah))",
+                         "{\"x\":\"y\",\"bad\":\"blah\"}");
+
+}
+
 int
 main(int argc G_GNUC_UNUSED, char *argv[] G_GNUC_UNUSED)
 {
@@ -34,6 +79,8 @@ main(int argc G_GNUC_UNUSED, char *argv[] G_GNUC_UNUSED)
 
   test_format_json();
   test_format_json_rekey();
+  test_format_json_with_type_hints();
+  test_format_json_strictness();
 
   deinit_template_tests();
   app_shutdown();
