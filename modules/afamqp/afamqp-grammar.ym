@@ -25,6 +25,7 @@
 %code requires {
 
 #include "afamqp-parser.h"
+#include "cfg-grammar.h"
 
 }
 

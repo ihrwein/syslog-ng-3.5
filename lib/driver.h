@@ -29,6 +29,7 @@
 #include "logpipe.h"
 #include "logqueue.h"
 #include "cfg.h"
+#include "type-hinting.h"
 
 /*
  * Drivers overview
@@ -161,6 +162,7 @@ struct _LogDestDriver
   gint log_fifo_size;
   gint throttle;
   StatsCounterItem *queued_global_messages;
+  gint type_cast_strictness;
 };
 
 /* returns a reference */

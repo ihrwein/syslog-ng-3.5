@@ -325,6 +325,8 @@ cfg_new(gint version)
   self->recv_time_zone = NULL;
   self->keep_timestamp = TRUE;
 
+  self->type_cast_strictness = TYPE_CAST_DROP_MESSAGE;
+
   cfg_tree_init_instance(&self->tree, self);
   return self;
 }

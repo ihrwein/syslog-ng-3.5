@@ -24,6 +24,7 @@
 %code requires {
 
 #include "afmongodb-parser.h"
+#include "cfg-grammar.h"
 
 }
 

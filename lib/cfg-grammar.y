@@ -32,6 +32,7 @@
 /* YYSTYPE and YYLTYPE is defined by the lexer */
 #include "cfg-lexer.h"
 #include "afinter.h"
+#include "type-hinting.h"
 #include "filter-expr-parser.h"
 #include "parser-expr-parser.h"
 #include "rewrite-expr-parser.h"
@@ -49,6 +50,7 @@ extern struct _FilePermOptions *last_file_perm_options;
 extern struct _MsgFormatOptions *last_msg_format_options;
 extern struct _LogDriver *last_driver;
 extern struct _LogParser *last_parser;
+LogTemplate *last_template;
 
 }
 
@@ -303,6 +305,9 @@ extern struct _LogParser *last_parser;
 %token KW_ADD_PREFIX                  10508
 %token KW_REPLACE_PREFIX              10509
 
+%token KW_TYPE_CAST                   10510
+%token KW_ON_ERROR                    10511
+
 /* END_DECLS */
 
 %code {
@@ -341,7 +346,6 @@ LogReaderOptions *last_reader_options;
 LogWriterOptions *last_writer_options;
 MsgFormatOptions *last_msg_format_options;
 FilePermOptions *last_file_perm_options;
-LogTemplate *last_template;
 CfgArgs *last_block_args;
 ValuePairs *last_value_pairs;
 ValuePairsTransformSet *last_vp_transset;
@@ -370,6 +374,8 @@ ValuePairsTransformSet *last_vp_transset;
 %type	<ptr> dest_item
 %type   <ptr> dest_plugin
 
+%type   <ptr> template_content
+
 %type   <ptr> filter_content
 
 %type   <ptr> parser_content
@@ -396,6 +402,7 @@ ValuePairsTransformSet *last_vp_transset;
  /* START_DECLS */
 
 %type   <ptr> value_pair_option
+%type   <num> on_error_stmt
 
 %type	<num> yesno
 %type   <num> dnsmode
@@ -709,13 +716,37 @@ template_items
 	|
 	;
 
-template_item
-	: KW_TEMPLATE '(' string ')'		{
-                                                  GError *error = NULL;
+/* START_RULES */
 
-                                                  CHECK_ERROR(log_template_compile(last_template, $3, &error), @3, "Error compiling template (%s)", error->message);
-                                                  free($3);
-                                                }
+template_content
+        : string
+        {
+          GError *error = NULL;
+
+          CHECK_ERROR(log_template_compile(last_template, $1, &error), @1, "Error compiling template (%s)", error->message);
+          free($1);
+        }
+        | LL_IDENTIFIER '(' string ')'
+        {
+          GError *error = NULL;
+          TypeHint type;
+
+          if (!last_template)
+            last_template = log_template_new(configuration, NULL);
+
+          CHECK_ERROR(log_template_compile(last_template, $3, &error), @3, "Error compiling template (%s)", error->message);
+          free($3);
+
+          CHECK_ERROR(type_hint_parse($1, &type, &error), @1, "Error setting the template type-hint (%s)", error->message);
+          last_template->type_hint = type;
+          free($1);
+        }
+        ;
+
+/* END_RULES */
+
+template_item
+	: KW_TEMPLATE '(' template_content ')'
 	| KW_TEMPLATE_ESCAPE '(' yesno ')'	{ log_template_set_escape(last_template, $3); }
 	;
 
@@ -761,6 +792,24 @@ block_arg
               cfg_args_set(last_block_args, $1, $3); free($1); free($3);
           }
         ;
+
+/* START_RULES */
+
+on_error_stmt
+	: KW_ON_ERROR '(' string ')'
+        {
+          GError *error = NULL;
+          gint on_error;
+
+          CHECK_ERROR(type_cast_strictness_parse($3, &on_error, &error),
+                      @3, "Invalid strictness");
+          free($3);
+
+          $$ = on_error;
+        }
+	;
+
+/* END_RULES */
 
 options_items
 	: options_item ';' options_items	{ $$ = $1; }
@@ -822,6 +871,7 @@ options_item
 	| KW_RECV_TIME_ZONE '(' string ')'      { configuration->recv_time_zone = g_strdup($3); free($3); }
 	| KW_SEND_TIME_ZONE '(' string ')'      { configuration->template_options.time_zone[LTZ_SEND] = g_strdup($3); free($3); }
 	| KW_LOCAL_TIME_ZONE '(' string ')'     { configuration->template_options.time_zone[LTZ_LOCAL] = g_strdup($3); free($3); }
+	| KW_TYPE_CAST '(' on_error_stmt ')'    { configuration->type_cast_strictness = $3; }
 	;
 
 /* START_RULES */
@@ -1065,8 +1115,26 @@ vp_options
 	;
 
 vp_option
-        : KW_PAIR '(' string ':' string ')'      { value_pairs_add_pair(last_value_pairs, configuration, $3, $5); free($3); free($5); }
-        | KW_PAIR '(' string string ')'          { value_pairs_add_pair(last_value_pairs, configuration, $3, $4); free($3); free($4); }
+        : KW_PAIR '(' string ':' template_content ')'
+        {
+          GError *error = NULL;
+
+          CHECK_ERROR(value_pairs_add_pair(last_value_pairs, configuration, $3,
+                                           last_template->type_hint,
+                                           last_template->template, &error),
+                      @5, "Error processing value-pair (%s)", error->message);
+          free($3);
+        }
+        | KW_PAIR '(' string template_content ')'
+        {
+          GError *error = NULL;
+
+          CHECK_ERROR(value_pairs_add_pair(last_value_pairs, configuration, $3,
+                                           last_template->type_hint,
+                                           last_template->template, &error),
+                      @4, "Error processing value-pair (%s)", error->message);
+          free($3);
+        }
         | KW_KEY '(' string KW_REKEY '('
         {
           last_vp_transset = value_pairs_transform_set_new($3);

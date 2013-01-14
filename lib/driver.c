@@ -282,6 +282,8 @@ log_dest_driver_deinit_method(LogPipe *s)
 void
 log_dest_driver_init_instance(LogDestDriver *self)
 {
+  GlobalConfig *config;
+
   log_driver_init_instance(&self->super);
   self->super.super.init = log_dest_driver_init_method;
   self->super.super.deinit = log_dest_driver_deinit_method;
@@ -290,6 +292,11 @@ log_dest_driver_init_instance(LogDestDriver *self)
   self->release_queue = log_dest_driver_release_queue_method;
   self->log_fifo_size = -1;
   self->throttle = 0;
+
+  config = log_pipe_get_config((LogPipe *)self);
+  if (!config)
+    config = configuration;
+  self->type_cast_strictness = config->type_cast_strictness;
 }
 
 void

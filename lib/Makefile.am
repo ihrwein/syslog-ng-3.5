@@ -77,6 +77,7 @@ pkginclude_HEADERS			+= \
 	lib/tls-support.h		\
 	lib/tlscontext.h  		\
 	lib/tlstransport.h		\
+	lib/type-hinting.h		\
 	lib/utils.h			\
 	lib/uuid.h			\
 	lib/value-pairs.h		\
@@ -146,6 +147,7 @@ lib_libsyslog_ng_la_SOURCES		= \
 	lib/tags.c			\
 	lib/templates.c			\
 	lib/timeutils.c			\
+	lib/type-hinting.c		\
 	lib/utils.c			\
 	lib/value-pairs.c		\
 	lib/vptransform.c		\

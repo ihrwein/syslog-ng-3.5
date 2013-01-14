@@ -31,6 +31,7 @@
 #include "cfg-parser.h"
 #include "persist-state.h"
 #include "templates.h"
+#include "type-hinting.h"
 
 #include <sys/types.h>
 #include <regex.h>
@@ -84,6 +85,7 @@ struct _GlobalConfig
   gint time_reopen;
   gint time_reap;
   gint suppress;
+  gint type_cast_strictness;
 
   gint log_fifo_size;
   gint log_msg_size;

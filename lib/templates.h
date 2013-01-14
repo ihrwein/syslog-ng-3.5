@@ -27,6 +27,7 @@
 
 #include "syslog-ng.h"
 #include "timeutils.h"
+#include "type-hinting.h"
 
 #define LTZ_LOCAL 0
 #define LTZ_SEND  1
@@ -54,6 +55,8 @@ typedef struct _LogTemplate
   GlobalConfig *cfg;
   GStaticMutex arg_lock;
   GPtrArray *arg_bufs;
+  TypeHint type_hint;
+  gint type_cast_strictness;
 } LogTemplate;
 
 /* template expansion options that can be influenced by the user and

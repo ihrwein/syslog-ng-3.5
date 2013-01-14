@@ -1274,6 +1274,7 @@ log_template_new(GlobalConfig *cfg, gchar *name)
   LogTemplate *self = g_new0(LogTemplate, 1);
   
   self->name = g_strdup(name);
+  self->type_cast_strictness = TYPE_CAST_DROP_MESSAGE;
   self->ref_cnt = 1;
   self->cfg = cfg;
   g_static_mutex_init(&self->arg_lock);

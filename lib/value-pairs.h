@@ -27,12 +27,14 @@
 
 #include "syslog-ng.h"
 #include "nvtable.h"
+#include "type-hinting.h"
 
 typedef struct _ValuePairs ValuePairs;
-typedef gboolean (*VPForeachFunc)(const gchar *name, const gchar *value, gpointer user_data);
+typedef gboolean (*VPForeachFunc)(const gchar *name, TypeHint type,
+                                  const gchar *value, gpointer user_data);
 
 typedef gboolean (*VPWalkValueCallbackFunc)(const gchar *name, const gchar *prefix,
-                                            const gchar *value,
+                                            TypeHint type, const gchar *value,
                                             gpointer *prefix_data, gpointer user_data);
 typedef gboolean (*VPWalkCallbackFunc)(const gchar *name,
                                        const gchar *prefix, gpointer *prefix_data,
@@ -41,24 +43,26 @@ typedef gboolean (*VPWalkCallbackFunc)(const gchar *name,
 
 gboolean value_pairs_add_scope(ValuePairs *vp, const gchar *scope);
 void value_pairs_add_glob_pattern(ValuePairs *vp, const gchar *pattern, gboolean include);
-void value_pairs_add_pair(ValuePairs *vp, GlobalConfig *cfg, const gchar *key, const gchar *value);
+gboolean value_pairs_add_pair(ValuePairs *vp, GlobalConfig *cfg,
+                              const gchar *key, TypeHint type,
+                              const gchar *value, GError **error);
 
 void value_pairs_add_transforms(ValuePairs *vp, gpointer vpts);
 
-void value_pairs_foreach_sorted(ValuePairs *vp, VPForeachFunc func,
-                                GCompareDataFunc compare_func,
-                                LogMessage *msg, gint32 seq_num,
-                                gpointer user_data);
-void value_pairs_foreach(ValuePairs *vp, VPForeachFunc func,
-                         LogMessage *msg, gint32 seq_num,
-                         gpointer user_data);
+gboolean value_pairs_foreach_sorted(ValuePairs *vp, VPForeachFunc func,
+                                    GCompareDataFunc compare_func,
+                                    LogMessage *msg, gint32 seq_num,
+                                    gpointer user_data);
+gboolean value_pairs_foreach(ValuePairs *vp, VPForeachFunc func,
+                             LogMessage *msg, gint32 seq_num,
+                             gpointer user_data);
 
-void value_pairs_walk(ValuePairs *vp,
-                      VPWalkCallbackFunc obj_start_func,
-                      VPWalkValueCallbackFunc process_value_func,
-                      VPWalkCallbackFunc obj_end_func,
-                      LogMessage *msg, gint32 seq_num,
-                      gpointer user_data);
+gboolean value_pairs_walk(ValuePairs *vp,
+                          VPWalkCallbackFunc obj_start_func,
+                          VPWalkValueCallbackFunc process_value_func,
+                          VPWalkCallbackFunc obj_end_func,
+                          LogMessage *msg, gint32 seq_num,
+                          gpointer user_data);
 
 ValuePairs *value_pairs_new(void);
 void value_pairs_free(ValuePairs *vp);
