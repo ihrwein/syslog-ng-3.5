@@ -1,6 +1,7 @@
 #include "template_lib.h"
 #include "apphook.h"
 #include "plugin.h"
+#include "cfg.h"
 
 void
 test_format_json(void)
