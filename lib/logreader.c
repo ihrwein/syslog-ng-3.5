@@ -94,7 +94,7 @@ struct _LogReader
   struct iv_task restart_task;
   struct iv_event schedule_wakeup;
   MainLoopIOWorkerJob io_job;
-  gboolean suspended:1;
+  gboolean watches_running:1, suspended:1;
   gint pollable_state;
   gint notify_code;
   gboolean pending_proto_present;
@@ -356,6 +356,9 @@ log_reader_start_watches(LogReader *self)
   gint fd;
   GIOCondition cond;
 
+  if (self->watches_running)
+    return TRUE;
+
   log_proto_server_prepare(self->proto, &fd, &cond);
 
   if (self->options->follow_freq > 0)
@@ -396,6 +399,7 @@ log_reader_start_watches(LogReader *self)
     }
 
   log_reader_update_watches(self);
+  self->watches_running = TRUE;
   return TRUE;
 }
 
@@ -403,12 +407,16 @@ log_reader_start_watches(LogReader *self)
 static void
 log_reader_stop_watches(LogReader *self)
 {
-  if (iv_fd_registered(&self->fd_watch))
-    iv_fd_unregister(&self->fd_watch);
-  if (iv_timer_registered(&self->follow_timer))
-    iv_timer_unregister(&self->follow_timer);
-  if (iv_task_registered(&self->restart_task))
-    iv_task_unregister(&self->restart_task);
+  if (self->watches_running)
+    {
+      if (iv_fd_registered(&self->fd_watch))
+        iv_fd_unregister(&self->fd_watch);
+      if (iv_timer_registered(&self->follow_timer))
+        iv_timer_unregister(&self->follow_timer);
+      if (iv_task_registered(&self->restart_task))
+        iv_task_unregister(&self->restart_task);
+      self->watches_running = FALSE;
+    }
 }
 
 static void
@@ -701,7 +709,7 @@ log_reader_reopen_deferred(gpointer s)
 
   if(proto)
     {
-        log_reader_start_watches(self);
+      log_reader_start_watches(self);
     }
 }
 
