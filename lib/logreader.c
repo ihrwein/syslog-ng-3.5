@@ -348,76 +348,49 @@ log_reader_init_watches(LogReader *self)
   self->io_job.completion = (void (*)(void *)) log_reader_work_finished;
 }
 
-/* NOTE: the return value is only used during initialization, and it is not
- * expected that it'd change once it returns success */
+/********************** FOLLOW TIMER POLL *****************************/
+
 static gboolean
-log_reader_start_watches(LogReader *self)
+log_reader_start_follow_timer_watches(LogReader *self)
 {
-  gint fd;
-  GIOCondition cond;
+  /* follow freq specified (only the file source does that, go into timed polling */
 
-  if (self->watches_running)
-    return TRUE;
-
-  log_proto_server_prepare(self->proto, &fd, &cond);
-
-  if (self->options->follow_freq > 0)
-    {
-      /* follow freq specified (only the file source does that, go into timed polling */
-
-      /* NOTE: the fd may not be set here, as it may not have been opened yet */
-      iv_timer_register(&self->follow_timer);
-      self->pollable_state = 0;
-    }
-  else
-    {
-      if (fd < 0)
-        {
-          msg_error("In order to poll non-yet-existing files, follow_freq() must be set",
-                    NULL);
-          return FALSE;
-        }
-
-      /* we have an FD, it is possible to poll it, register it  */
-      self->fd_watch.fd = fd;
-      if (self->pollable_state < 0)
-        {
-          self->pollable_state = !iv_fd_register_try(&self->fd_watch);
-        }
-      else if (self->pollable_state > 0)
-        {
-          iv_fd_register(&self->fd_watch);
-        }
-
-      if (self->pollable_state == 0)
-        {
-          msg_error("Unable to determine how to monitor this fd, follow_freq() not set and it is not possible to poll it with the current ivykis polling method, try changing IV_EXCLUDE_POLL_METHOD environment variable",
-                    evt_tag_int("fd", fd),
-                    NULL);
-          return FALSE;
-        }
-    }
-
-  log_reader_update_watches(self);
-  self->watches_running = TRUE;
+  /* NOTE: the fd may not be set here, as it may not have been opened yet */
+  iv_timer_register(&self->follow_timer);
+  self->pollable_state = 0;
   return TRUE;
 }
 
+static void
+log_reader_stop_follow_timer_watches(LogReader *self)
+{
+  if (iv_timer_registered(&self->follow_timer))
+    iv_timer_unregister(&self->follow_timer);
+}
 
 static void
-log_reader_stop_watches(LogReader *self)
+log_reader_suspend_follow_timer_watches(LogReader *self)
 {
-  if (self->watches_running)
+  log_reader_stop_follow_timer_watches(self);
+}
+
+static void
+log_reader_update_follow_timer(LogReader *self)
+{
+  if (self->options->follow_freq > 0)
     {
-      if (iv_fd_registered(&self->fd_watch))
-        iv_fd_unregister(&self->fd_watch);
       if (iv_timer_registered(&self->follow_timer))
         iv_timer_unregister(&self->follow_timer);
-      if (iv_task_registered(&self->restart_task))
-        iv_task_unregister(&self->restart_task);
-      self->watches_running = FALSE;
+      iv_validate_now();
+      self->follow_timer.expires = iv_now;
+      timespec_add_msec(&self->follow_timer.expires, self->options->follow_freq);
+      iv_timer_register(&self->follow_timer);
     }
+  else
+    g_assert_not_reached();
 }
+
+/********************** I/O POLL *****************************/
 
 static void
 log_reader_update_fd_callbacks(LogReader *self, GIOCondition cond)
@@ -438,20 +411,91 @@ log_reader_update_fd_callbacks(LogReader *self, GIOCondition cond)
     iv_fd_set_handler_err(&self->fd_watch, NULL);
 }
 
-static void
-log_reader_update_follow_timer(LogReader *self)
+static gboolean
+log_reader_start_io_poll_watches(LogReader *self)
 {
-  if (self->options->follow_freq > 0)
+  gint fd;
+  GIOCondition cond;
+
+  log_proto_server_prepare(self->proto, &fd, &cond);
+  if (fd < 0)
     {
-      if (iv_timer_registered(&self->follow_timer))
-        iv_timer_unregister(&self->follow_timer);
-      iv_validate_now();
-      self->follow_timer.expires = iv_now;
-      timespec_add_msec(&self->follow_timer.expires, self->options->follow_freq);
-      iv_timer_register(&self->follow_timer);
+      msg_error("In order to poll non-yet-existing files, follow_freq() must be set",
+                NULL);
+      return FALSE;
     }
+
+  /* we have an FD, it is possible to poll it, register it  */
+  self->fd_watch.fd = fd;
+  if (self->pollable_state < 0)
+    {
+      self->pollable_state = !iv_fd_register_try(&self->fd_watch);
+    }
+  else if (self->pollable_state > 0)
+    {
+      iv_fd_register(&self->fd_watch);
+    }
+
+  if (self->pollable_state == 0)
+    {
+      msg_error("Unable to determine how to monitor this fd, follow_freq() not set and it is not possible to poll it with the current ivykis polling method, try changing IV_EXCLUDE_POLL_METHOD environment variable",
+                evt_tag_int("fd", fd),
+                NULL);
+      return FALSE;
+    }
+  return TRUE;
+}
+
+static void
+log_reader_stop_io_poll_watches(LogReader *self)
+{
+  if (iv_fd_registered(&self->fd_watch))
+    iv_fd_unregister(&self->fd_watch);
+}
+
+static void
+log_reader_suspend_io_poll_watches(LogReader *self)
+{
+  log_reader_update_fd_callbacks(self, 0);
+}
+
+/* NOTE: the return value is only used during initialization, and it is not
+ * expected that it'd change once it returns success */
+static gboolean
+log_reader_start_watches(LogReader *self)
+{
+  gboolean success;
+
+  if (self->watches_running)
+    return TRUE;
+
+  if (self->options->follow_freq > 0)
+    success = log_reader_start_follow_timer_watches(self);
   else
-    g_assert_not_reached();
+    success = log_reader_start_io_poll_watches(self);
+
+  if (success)
+    {
+      log_reader_update_watches(self);
+      self->watches_running = TRUE;
+    }
+  return success;
+}
+
+static void
+log_reader_stop_watches(LogReader *self)
+{
+  if (self->watches_running)
+    {
+      if (self->options->follow_freq > 0)
+        log_reader_stop_follow_timer_watches(self);
+      else
+        log_reader_stop_io_poll_watches(self);
+
+      if (iv_task_registered(&self->restart_task))
+        iv_task_unregister(&self->restart_task);
+      self->watches_running = FALSE;
+    }
 }
 
 static void
@@ -476,11 +520,10 @@ log_reader_update_watches(LogReader *self)
        */
 
       self->immediate_check = FALSE;
-      if (self->pollable_state)
-        log_reader_update_fd_callbacks(self, 0);
-
-      if (iv_timer_registered(&self->follow_timer))
-        iv_timer_unregister(&self->follow_timer);
+      if (self->options->follow_freq > 0)
+        log_reader_suspend_follow_timer_watches(self);
+      else
+        log_reader_suspend_io_poll_watches(self);
 
       if (free_to_send)
         {
@@ -498,10 +541,10 @@ log_reader_update_watches(LogReader *self)
       return;
     }
 
-  if (self->pollable_state)
-    log_reader_update_fd_callbacks(self, cond);
-  else
+  if (self->options->follow_freq > 0)
     log_reader_update_follow_timer(self);
+  else
+    log_reader_update_fd_callbacks(self, cond);
 }
 
 static gboolean
