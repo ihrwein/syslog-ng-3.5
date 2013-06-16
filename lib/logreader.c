@@ -53,16 +53,17 @@ struct _LogReaderPollEvents
   LogReaderPollCallback callback;
   gpointer callback_data;
 
-  gboolean (*start_watches)(LogReaderPollEvents *self);
+  void (*start_watches)(LogReaderPollEvents *self);
   void (*stop_watches)(LogReaderPollEvents *self);
   void (*update_watches)(LogReaderPollEvents *self, GIOCondition cond);
   void (*free_fn)(LogReaderPollEvents *self);
 };
 
-static inline gboolean
+static inline void
 log_reader_poll_events_start_watches(LogReaderPollEvents *self)
 {
-  return self->start_watches(self);
+  if (self->start_watches)
+    self->start_watches(self);
 }
 
 static inline void
@@ -77,7 +78,7 @@ log_reader_poll_events_update_watches(LogReaderPollEvents *self, GIOCondition co
   self->update_watches(self, cond);
 }
 
-static inline void
+static void
 log_reader_poll_events_suspend_watches(LogReaderPollEvents *self)
 {
   log_reader_poll_events_update_watches(self, 0);
@@ -216,12 +217,6 @@ log_reader_poll_file_changes_check_file(gpointer s)
   log_reader_poll_events_update_watches(s, G_IO_IN);
 }
 
-static gboolean
-log_reader_poll_file_changes_start_watches(LogReaderPollEvents *s)
-{
-  return TRUE;
-}
-
 static void
 log_reader_poll_file_changes_stop_watches(LogReaderPollEvents *s)
 {
@@ -268,7 +263,6 @@ log_reader_poll_file_changes_new(gint fd, const gchar *follow_filename, gint fol
 {
   LogReaderPollFileChanges *self = g_new0(LogReaderPollFileChanges, 1);
   
-  self->super.start_watches = log_reader_poll_file_changes_start_watches;
   self->super.stop_watches = log_reader_poll_file_changes_stop_watches;
   self->super.update_watches = log_reader_poll_file_changes_update_watches;
   self->super.free_fn = log_reader_poll_file_changes_free;
@@ -291,62 +285,16 @@ typedef struct _LogReaderPollFd
 {
   LogReaderPollEvents super;
   struct iv_fd fd_watch;
-  gint fd;
-  gint pollable_state;
 } LogReaderPollFd;
 
+#define IV_FD_CALLBACK(x) ((void (*)(void *)) (x))
 
 static void
-log_reader_poll_fd_update_fd_callbacks(LogReaderPollFd *self, GIOCondition cond)
-{
-  if (cond & G_IO_IN)
-    iv_fd_set_handler_in(&self->fd_watch, (void (*)(void *)) log_reader_poll_events_invoke_callback);
-  else
-    iv_fd_set_handler_in(&self->fd_watch, NULL);
-
-  if (cond & G_IO_OUT)
-    iv_fd_set_handler_out(&self->fd_watch, (void (*)(void *)) log_reader_poll_events_invoke_callback);
-  else
-    iv_fd_set_handler_out(&self->fd_watch, NULL);
-
-  if (cond & (G_IO_IN + G_IO_OUT))
-    iv_fd_set_handler_err(&self->fd_watch, (void (*)(void *)) log_reader_poll_events_invoke_callback);
-  else
-    iv_fd_set_handler_err(&self->fd_watch, NULL);
-}
-
-static gboolean
 log_reader_poll_fd_start_watches(LogReaderPollEvents *s)
 {
   LogReaderPollFd *self = (LogReaderPollFd *) s;
-  gint fd = self->fd;
 
-  if (fd < 0)
-    {
-      msg_error("In order to poll non-yet-existing files, follow_freq() must be set",
-                NULL);
-      return FALSE;
-    }
-
-  /* we have an FD, it is possible to poll it, register it  */
-  self->fd_watch.fd = fd;
-  if (self->pollable_state < 0)
-    {
-      self->pollable_state = !iv_fd_register_try(&self->fd_watch);
-    }
-  else if (self->pollable_state > 0)
-    {
-      iv_fd_register(&self->fd_watch);
-    }
-
-  if (self->pollable_state == 0)
-    {
-      msg_error("Unable to determine how to monitor this fd, follow_freq() not set and it is not possible to poll it with the current ivykis polling method, try changing IV_EXCLUDE_POLL_METHOD environment variable",
-                evt_tag_int("fd", fd),
-                NULL);
-      return FALSE;
-    }
-  return TRUE;
+  iv_fd_register(&self->fd_watch);
 }
 
 static void
@@ -363,23 +311,35 @@ log_reader_poll_fd_update_watches(LogReaderPollEvents *s, GIOCondition cond)
 {
   LogReaderPollFd *self = (LogReaderPollFd *) s;
 
-  log_reader_poll_fd_update_fd_callbacks(self, cond);
+  if (cond & G_IO_IN)
+    iv_fd_set_handler_in(&self->fd_watch, IV_FD_CALLBACK(log_reader_poll_events_invoke_callback));
+  else
+    iv_fd_set_handler_in(&self->fd_watch, NULL);
+
+  if (cond & G_IO_OUT)
+    iv_fd_set_handler_out(&self->fd_watch, IV_FD_CALLBACK(log_reader_poll_events_invoke_callback));
+  else
+    iv_fd_set_handler_out(&self->fd_watch, NULL);
+
+  if (cond & (G_IO_IN + G_IO_OUT))
+    iv_fd_set_handler_err(&self->fd_watch, IV_FD_CALLBACK(log_reader_poll_events_invoke_callback));
+  else
+    iv_fd_set_handler_err(&self->fd_watch, NULL);
 }
 
 LogReaderPollEvents *
 log_reader_poll_fd_new(gint fd)
 {
   LogReaderPollFd *self = g_new0(LogReaderPollFd, 1);
-  
+
+  g_assert(fd >= 0);
+
   self->super.start_watches = log_reader_poll_fd_start_watches;
   self->super.stop_watches = log_reader_poll_fd_stop_watches;
-  self->super.suspend_watches = log_reader_poll_fd_suspend_watches;
   self->super.update_watches = log_reader_poll_fd_update_watches;
   
-  self->fd = fd;
-  self->pollable_state = -1;
-
   IV_FD_INIT(&self->fd_watch);
+  self->fd_watch.fd = fd;
   self->fd_watch.cookie = self;
 
   return &self->super;
@@ -442,7 +402,7 @@ struct _LogReader
 
 static gboolean log_reader_fetch_log(LogReader *self);
 
-static gboolean log_reader_start_watches(LogReader *self);
+static void log_reader_start_watches(LogReader *self);
 static void log_reader_stop_watches(LogReader *self);
 static void log_reader_update_watches(LogReader *self);
 
@@ -581,38 +541,72 @@ log_reader_init_watches(LogReader *self)
   self->io_job.completion = (void (*)(void *)) log_reader_work_finished;
 }
 
-/********************** I/O POLL *****************************/
-
-/* NOTE: the return value is only used during initialization, and it is not
- * expected that it'd change once it returns success */
 static gboolean
-log_reader_start_watches(LogReader *self)
+log_reader_is_fd_pollable(LogReader *self, gint fd)
 {
-  gboolean success;
+  struct iv_fd check_fd;
+  gboolean pollable;
+
+  IV_FD_INIT(&check_fd);
+  check_fd.fd = fd;
+  check_fd.cookie = NULL;
+
+  pollable = (iv_fd_register_try(&check_fd) == 0);
+  if (pollable)
+    iv_fd_unregister(&check_fd);
+  return pollable;
+}
+
+static gboolean
+log_reader_create_poll_events_instance(LogReader *self)
+{
   gint fd = -1;
   GIOCondition cond;
 
-  if (self->watches_running)
-    return TRUE;
-
   log_proto_server_prepare(self->proto, &fd, &cond);
-  if (!self->poll_events)
+  if (self->options->follow_freq > 0)
     {
-      if (self->options->follow_freq > 0)
-        self->poll_events = log_reader_poll_file_changes_new(fd, self->follow_filename, self->options->follow_freq, self->control);
-      else
-        self->poll_events = log_reader_poll_fd_new(fd);
-      log_reader_poll_events_set_callback(self->poll_events, log_reader_io_process_input, self);
+      self->poll_events = log_reader_poll_file_changes_new(fd, self->follow_filename, self->options->follow_freq, self->control);
+    }
+  else if (fd >= 0)
+    {
+      if (!log_reader_is_fd_pollable(self, fd))
+        {
+          msg_error("Unable to determine how to monitor this fd, follow_freq() not set and it is not possible to poll it with the current ivykis polling method, try changing IV_EXCLUDE_POLL_METHOD environment variable",
+                    evt_tag_int("fd", fd),
+                    NULL);
+
+          return FALSE;
+        }
+      self->poll_events = log_reader_poll_fd_new(fd);
+    }
+  else
+    {
+      msg_error("In order to poll non-yet-existing files, follow_freq() must be set",
+                NULL);
+      return FALSE;
     }
 
-  success = log_reader_poll_events_start_watches(self->poll_events);
+  log_reader_poll_events_set_callback(self->poll_events, log_reader_io_process_input, self);
+  return TRUE;
+}
 
-  if (success)
+static void
+log_reader_free_poll_events_instance(LogReader *self)
+{
+  log_reader_poll_events_free(self->poll_events);
+  self->poll_events = NULL;
+}
+
+static void
+log_reader_start_watches(LogReader *self)
+{
+  if (!self->watches_running)
     {
+      log_reader_poll_events_start_watches(self->poll_events);
       log_reader_update_watches(self);
       self->watches_running = TRUE;
     }
-  return success;
 }
 
 static void
@@ -795,8 +789,11 @@ log_reader_init(LogPipe *s)
                 NULL);
       return FALSE;
     }
-  if (!log_reader_start_watches(self))
+
+  if (!log_reader_create_poll_events_instance(self))
     return FALSE;
+
+  log_reader_start_watches(self);
   iv_event_register(&self->schedule_wakeup);
 
   return TRUE;
@@ -811,8 +808,7 @@ log_reader_deinit(LogPipe *s)
 
   iv_event_unregister(&self->schedule_wakeup);
   log_reader_stop_watches(self);
-  log_reader_poll_events_free(self->poll_events);
-  self->poll_events = NULL;
+  log_reader_free_poll_events_instance(self);
   if (!log_source_deinit(s))
     return FALSE;
 
