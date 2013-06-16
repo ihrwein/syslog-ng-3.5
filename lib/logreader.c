@@ -55,7 +55,6 @@ struct _LogReaderPollEvents
 
   gboolean (*start_watches)(LogReaderPollEvents *self);
   void (*stop_watches)(LogReaderPollEvents *self);
-  void (*suspend_watches)(LogReaderPollEvents *self);
   void (*update_watches)(LogReaderPollEvents *self, GIOCondition cond);
   void (*free_fn)(LogReaderPollEvents *self);
 };
@@ -73,15 +72,15 @@ log_reader_poll_events_stop_watches(LogReaderPollEvents *self)
 }
 
 static inline void
-log_reader_poll_events_suspend_watches(LogReaderPollEvents *self)
-{
-  self->suspend_watches(self);
-}
-
-static inline void
 log_reader_poll_events_update_watches(LogReaderPollEvents *self, GIOCondition cond)
 {
   self->update_watches(self, cond);
+}
+
+static inline void
+log_reader_poll_events_suspend_watches(LogReaderPollEvents *self)
+{
+  log_reader_poll_events_update_watches(self, 0);
 }
 
 void
@@ -236,12 +235,6 @@ log_reader_poll_file_changes_stop_watches(LogReaderPollEvents *s)
 }
 
 static void
-log_reader_poll_file_changes_suspend_watches(LogReaderPollEvents *s)
-{
-  log_reader_poll_file_changes_stop_watches(s);
-}
-
-static void
 log_reader_poll_file_changes_update_watches(LogReaderPollEvents *s, GIOCondition cond)
 {
   LogReaderPollFileChanges *self = (LogReaderPollFileChanges *) s;
@@ -277,7 +270,6 @@ log_reader_poll_file_changes_new(gint fd, const gchar *follow_filename, gint fol
   
   self->super.start_watches = log_reader_poll_file_changes_start_watches;
   self->super.stop_watches = log_reader_poll_file_changes_stop_watches;
-  self->super.suspend_watches = log_reader_poll_file_changes_suspend_watches;
   self->super.update_watches = log_reader_poll_file_changes_update_watches;
   self->super.free_fn = log_reader_poll_file_changes_free;
   
@@ -364,14 +356,6 @@ log_reader_poll_fd_stop_watches(LogReaderPollEvents *s)
 
   if (iv_fd_registered(&self->fd_watch))
     iv_fd_unregister(&self->fd_watch);
-}
-
-static void
-log_reader_poll_fd_suspend_watches(LogReaderPollEvents *s)
-{
-  LogReaderPollFd *self = (LogReaderPollFd *) s;
-
-  log_reader_poll_fd_update_fd_callbacks(self, 0);
 }
 
 static void
@@ -584,8 +568,6 @@ log_reader_io_process_input(gpointer s)
 static void
 log_reader_init_watches(LogReader *self)
 {
-
-
   IV_TASK_INIT(&self->restart_task);
   self->restart_task.cookie = self;
   self->restart_task.handler = log_reader_io_process_input;
