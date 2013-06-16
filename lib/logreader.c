@@ -219,9 +219,6 @@ log_reader_poll_file_changes_check_file(gpointer s)
 static gboolean
 log_reader_poll_file_changes_start_watches(LogReaderPollEvents *s)
 {
-  LogReaderPollFileChanges *self = (LogReaderPollFileChanges *) s;
-
-  //  iv_timer_register(&self->follow_timer);
   return TRUE;
 }
 
@@ -235,6 +232,15 @@ log_reader_poll_file_changes_stop_watches(LogReaderPollEvents *s)
 }
 
 static void
+log_reader_poll_file_changes_rearm_timer(LogReaderPollFileChanges *self)
+{
+  iv_validate_now();
+  self->follow_timer.expires = iv_now;
+  timespec_add_msec(&self->follow_timer.expires, self->follow_freq);
+  iv_timer_register(&self->follow_timer);
+}
+
+static void
 log_reader_poll_file_changes_update_watches(LogReaderPollEvents *s, GIOCondition cond)
 {
   LogReaderPollFileChanges *self = (LogReaderPollFileChanges *) s;
@@ -242,16 +248,10 @@ log_reader_poll_file_changes_update_watches(LogReaderPollEvents *s, GIOCondition
   /* we can only provide input events */
   g_assert((cond & ~G_IO_IN) == 0);
 
-  if (iv_timer_registered(&self->follow_timer))
-    iv_timer_unregister(&self->follow_timer);
+  log_reader_poll_file_changes_stop_watches(s);
 
   if (cond & G_IO_IN)
-    {
-      iv_validate_now();
-      self->follow_timer.expires = iv_now;
-      timespec_add_msec(&self->follow_timer.expires, self->follow_freq);
-      iv_timer_register(&self->follow_timer);
-    }
+    log_reader_poll_file_changes_rearm_timer(self);
 }
 
 static void
