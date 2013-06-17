@@ -64,7 +64,8 @@ import test_input_drivers
 import test_performance
 import test_sql
 
-tests = (test_input_drivers, test_sql, test_file_source, test_filters, test_performance)
+#tests = (test_input_drivers, test_sql, test_file_source, test_filters, test_performance)
+tests = (test_input_drivers, )
 
 init_env()
 seed_rnd()
