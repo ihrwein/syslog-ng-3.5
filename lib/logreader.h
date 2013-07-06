@@ -27,6 +27,7 @@
 
 #include "logsource.h"
 #include "logproto/logproto-server.h"
+#include "poll-events.h"
 #include "timeutils.h"
 
 /* flags */
@@ -60,7 +61,7 @@ void log_reader_set_peer_addr(LogReader *s, GSockAddr *peer_addr);
 void log_reader_set_immediate_check(LogReader *s);
 void log_reader_reopen(LogReader *s, LogProtoServer *proto, LogPipe *control, LogReaderOptions *options, gint stats_level, gint stats_source, const gchar *stats_id, const gchar *stats_instance, gboolean immediate_check);
 
-LogReader *log_reader_new(LogProtoServer *proto);
+LogReader *log_reader_new(LogProtoServer *proto, PollEvents *poll_events);
 void log_reader_options_defaults(LogReaderOptions *options);
 void log_reader_options_init(LogReaderOptions *options, GlobalConfig *cfg, const gchar *group_name);
 void log_reader_options_destroy(LogReaderOptions *options);
