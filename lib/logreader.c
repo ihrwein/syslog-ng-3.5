@@ -567,6 +567,7 @@ log_reader_update_watches(LogReader *self)
   gboolean free_to_send;
 
   main_loop_assert_main_thread();
+  g_assert(self->watches_running);
   
   self->suspended = FALSE;
   free_to_send = log_source_free_to_send(&self->super);
