@@ -34,7 +34,6 @@ struct _LogReader
   LogReaderOptions *options;
   PollEvents *poll_events;
   GSockAddr *peer_addr;
-  gchar *follow_filename;
   ino_t inode;
   gint64 size;
 
@@ -496,16 +495,7 @@ log_reader_reopen(LogReader *self, LogProtoServer *proto, LogPipe *control, LogR
     }
   log_reader_set_options(self, control, options, stats_level, stats_source, stats_id, stats_instance);
   
-  /* FIXME:!!!!!!!!!!! */
-  log_reader_set_follow_filename(self, stats_instance);
   log_source_init(&self->super.super);
-}
-
-void
-log_reader_set_follow_filename(LogReader *self, const gchar *follow_filename)
-{
-  g_free(self->follow_filename);
-  self->follow_filename = g_strdup(follow_filename);
 }
 
 void
