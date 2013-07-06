@@ -477,63 +477,6 @@ log_reader_init_watches(LogReader *self)
   self->io_job.completion = (void (*)(void *)) log_reader_work_finished;
 }
 
-static gboolean
-log_reader_is_fd_pollable(LogReader *self, gint fd)
-{
-  struct iv_fd check_fd;
-  gboolean pollable;
-
-  IV_FD_INIT(&check_fd);
-  check_fd.fd = fd;
-  check_fd.cookie = NULL;
-
-  pollable = (iv_fd_register_try(&check_fd) == 0);
-  if (pollable)
-    iv_fd_unregister(&check_fd);
-  return pollable;
-}
-
-static gboolean
-log_reader_create_poll_events_instance(LogReader *self)
-{
-  gint fd = -1;
-  GIOCondition cond;
-
-  log_proto_server_prepare(self->proto, &fd, &cond);
-  if (self->options->follow_freq > 0)
-    {
-      self->poll_events = log_reader_poll_file_changes_new(fd, self->follow_filename, self->options->follow_freq, self->control);
-    }
-  else if (fd >= 0)
-    {
-      if (!log_reader_is_fd_pollable(self, fd))
-        {
-          msg_error("Unable to determine how to monitor this fd, follow_freq() not set and it is not possible to poll it with the current ivykis polling method, try changing IV_EXCLUDE_POLL_METHOD environment variable",
-                    evt_tag_int("fd", fd),
-                    NULL);
-
-          return FALSE;
-        }
-      self->poll_events = log_reader_poll_fd_new(fd);
-    }
-  else
-    {
-      msg_error("In order to poll non-yet-existing files, follow_freq() must be set",
-                NULL);
-      return FALSE;
-    }
-
-  poll_events_set_callback(self->poll_events, log_reader_io_process_input, self);
-  return TRUE;
-}
-
-static void
-log_reader_free_poll_events_instance(LogReader *self)
-{
-  poll_events_free(self->poll_events);
-  self->poll_events = NULL;
-}
-
 static void
 log_reader_start_watches(LogReader *self)
 {
@@ -728,8 +671,7 @@ log_reader_init(LogPipe *s)
       return FALSE;
     }
 
-  if (!log_reader_create_poll_events_instance(self))
-    return FALSE;
+  poll_events_set_callback(self->poll_events, log_reader_io_process_input, self);
 
   log_reader_start_watches(self);
   iv_event_register(&self->schedule_wakeup);
@@ -746,7 +688,6 @@ log_reader_deinit(LogPipe *s)
 
   iv_event_unregister(&self->schedule_wakeup);
   log_reader_stop_watches(self);
-  log_reader_free_poll_events_instance(self);
   if (!log_source_deinit(s))
     return FALSE;
 
@@ -860,7 +801,7 @@ log_reader_set_peer_addr(LogReader *s, GSockAddr *peer_addr)
 }
 
 LogReader *
-log_reader_new(LogProtoServer *proto)
+log_reader_new(LogProtoServer *proto, PollEvents *poll_events)
 {
   LogReader *self = g_new0(LogReader, 1);
 
@@ -870,6 +811,7 @@ log_reader_new(LogProtoServer *proto)
   self->super.super.free_fn = log_reader_free;
   self->super.wakeup = log_reader_wakeup;
   self->proto = proto;
+  self->poll_events = poll_events;
   self->immediate_check = FALSE;
   log_reader_init_watches(self);
   g_static_mutex_init(&self->pending_proto_lock);
