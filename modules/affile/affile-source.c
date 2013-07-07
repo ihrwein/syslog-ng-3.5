@@ -261,7 +261,8 @@ affile_sd_notify(LogPipe *s, gint notify_code, gpointer user_data)
 
             proto = affile_sd_construct_proto(self, fd);
 
-            self->reader = log_reader_new(proto, poll_events);
+            self->reader = log_reader_new();
+            log_reader_reopen(self->reader, proto, poll_events);
 
             log_reader_set_options(self->reader,
                                    s,
@@ -341,7 +342,8 @@ affile_sd_init(LogPipe *s)
         }
 
       proto = affile_sd_construct_proto(self, fd);
-      self->reader = log_reader_new(proto, poll_events);
+      self->reader = log_reader_new();
+      log_reader_reopen(self->reader, proto, poll_events);
 
       log_reader_set_options(self->reader,
                              s,
