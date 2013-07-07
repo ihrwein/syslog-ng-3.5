@@ -25,11 +25,10 @@
 #include "messages.h"
 
 static gboolean
-log_proto_text_client_prepare(LogProtoClient *s, gint *fd, GIOCondition *cond)
+log_proto_text_client_prepare(LogProtoClient *s, GIOCondition *cond)
 {
   LogProtoTextClient *self = (LogProtoTextClient *) s;
 
-  *fd = self->super.transport->fd;
   *cond = self->super.transport->cond;
 
   /* if there's no pending I/O in the transport layer, then we want to do a write */
