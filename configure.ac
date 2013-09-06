@@ -205,6 +205,13 @@ AC_ARG_ENABLE(redis,
 AC_ARG_WITH(libhiredis,
              AC_HELP_STRING([--with-libhiredis=DIR],
                             [use libhiredis library from (prefix) directory DIR]),,)
+AC_ARG_ENABLE(avro,
+             [  --enable-avro           Enable Avro support (default: auto)]
+             ,,enable_avro="auto")
+
+AC_ARG_WITH(libavro-c,
+            AC_HELP_STRING([--with-libavro-c=DIR],
+                           [use libavro-c library from (prefix) directory DIR]),,)
 
 AC_ARG_ENABLE(systemd,
               [  --enable-systemd        Enable systemd support (default: auto)]
@@ -913,6 +920,39 @@ if test "x$enable_redis" != "xno" && test "x$with_redis" != "no"; then
 fi
 
 dnl ***************************************************************************
+dnl libavro-c headers/libraries
+dnl ***************************************************************************
+if test "x$enable_avro" != "xno" && test "x$with_libavro_c" != "no"; then
+	libavro_c="yes"
+	if test "x$with_libavro_c" != "yes" && test "x$with_libavro_c" != "x"; then
+		CPPFLAGS_SAVE="$CPPFLAGS"
+		LDFLAGS_SAVE="$LDFLAGS"
+		CPPFLAGS="$CPPFLAGS -I$with_libavro_c/include"
+		LDFLAGS="$LDFLAGS -L$with_libavro_c/lib"
+		AC_CHECK_HEADER(avro.h, [LIBAVRO_C_CFLAGS="-I$with_libavro_c/include"
+					     LIBAVRO_C_LIBS="-L$with_libavro_c/lib -lavro -lz -llzma"], [libavro_c=no])
+		CPPFLAGS="$CPPFLAGS_SAVE"
+		LDFLAGS="$LDFLAGS_SAVE"
+	else
+		AC_MSG_CHECKING(for Avro-c)
+		if avro --version >/dev/null 2>&1; then
+			AC_MSG_RESULT(yes)
+			LIBAVRO_C_CFLAGS="`pkg-config --cflags avro-c`"
+			LIBAVRO_C_LIBS="`pkg-config --libs avro-c`"
+		else
+			AC_MSG_RESULT(no)
+			libavro_c=no
+		fi
+	fi
+	if test "x$enable_avro" = "xyes" && test "x$libavro_c" = "xno"; then
+		AC_MSG_ERROR(libavro_c not found)
+	fi
+	enable_avro=$libavro_c
+fi
+AC_SUBST(LIBAVRO_C_CFLAGS)
+AC_SUBST(LIBAVRO_C_LIBS)
+
+dnl ***************************************************************************
 dnl rabbitmq-c headers/libraries
 dnl ***************************************************************************
 
@@ -1202,6 +1242,7 @@ AM_CONDITIONAL(ENABLE_SUN_STREAMS, [test "$enable_sun_streams" = "yes"])
 AM_CONDITIONAL(ENABLE_PACCT, [test "$enable_pacct" = "yes"])
 AM_CONDITIONAL(ENABLE_MONGODB, [test "$enable_mongodb" = "yes"])
 AM_CONDITIONAL(ENABLE_SMTP, [test "$enable_smtp" = "yes"])
+AM_CONDITIONAL(ENABLE_AVRO, [test "$enable_avro" = "yes"])
 AM_CONDITIONAL(ENABLE_AMQP, [test "$enable_amqp" = "yes"])
 AM_CONDITIONAL(ENABLE_STOMP, [test "$enable_stomp" = "yes"])
 AM_CONDITIONAL(ENABLE_JSON, [test "$enable_json" = "yes"])
@@ -1301,6 +1342,7 @@ echo "  PACCT module (EXPERIMENTAL) : ${enable_pacct:=no}"
 echo "  MongoDB destination (module): ${enable_mongodb:=no}"
 echo "  JSON support (module)       : ${enable_json:=no}"
 echo "  SMTP support (module)       : ${enable_smtp:=no}"
+echo "  Avro support (module)       : ${enable_avro:=no}"
 echo "  AMQP destination (module)   : ${enable_amqp:=no}"
 echo "  STOMP destination (module)  : ${enable_stomp:=no}"
 echo "  GEOIP support (module)      : ${enable_geoip:=no}"
