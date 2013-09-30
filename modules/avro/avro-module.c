@@ -337,7 +337,7 @@ avro_mod_dd_set_procid(avro_value_t *parent, LogMessage *logmsg)
   error = assert_zero(avro_value_get_by_name(parent, PROCID, &field, NULL));
 
   if (logmsg == NULL ||
-      !(pid = log_msg_get_value(logmsg, log_msg_get_value_handle("PID"), &size)))
+      ((pid = log_msg_get_value(logmsg, log_msg_get_value_handle("PID"), &size)) && !(size > 0)))
     {
       error = assert_zero(avro_value_set_branch(&field, NULL_BRANCH, &branch));
       error = assert_zero(avro_value_set_null(&branch));
