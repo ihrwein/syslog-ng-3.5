@@ -560,6 +560,8 @@ avro_mod_dd_worker_insert(AvroDriver *self)
   error |= avro_mod_dd_init_msg(self, &avro_logmsg);
   error |= avro_mod_dd_fill_msg(self, msg, &avro_logmsg);
   error |= avro_mod_dd_datafile_append_msg(self, &avro_logmsg);
+
+  avro_value_iface_decref(self->writer_iface);
   avro_value_decref(&avro_logmsg);
 
   error = (success) ? TRUE : FALSE;
