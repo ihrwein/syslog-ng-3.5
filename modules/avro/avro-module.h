@@ -36,12 +36,12 @@
 
 #define SDATA_PREFIX  ".SDATA."
 
-#define LOG_MSG			"LOG_MSG"
+#define LOG_MSG		"LOG_MSG"
 
-#define PRIORITY		"PRIORITY"
-#define _VERSION         "VERSION"
-#define TIMESTAMP		"TIMESTAMP"
-#define HOSTNAME		"HOSTNAME"
+#define PRIORITY	"PRIORITY"
+#define _VERSION        "VERSION"
+#define TIMESTAMP	"TIMESTAMP"
+#define HOSTNAME	"HOSTNAME"
 #define APP_NAME        "APP_NAME"
 #define PROCID          "PROCID"
 #define MSGID           "MSGID"

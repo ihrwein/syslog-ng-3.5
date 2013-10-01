@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2011-2012 BalaBit IT Ltd, Budapest, Hungary
- * Copyright (c) 2011-2012 Gergely Nagy <algernon@balabit.hu>
+ * Copyright (c) 2013 BalaBit IT Ltd, Budapest, Hungary
+ * Copyright (c) 2013 Tibor Benke <btibi@balabit.hu>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published
@@ -41,7 +41,6 @@ typedef struct
   avro_value_iface_t *writer_iface;
   avro_file_writer_t data_file_writer;
 
-  time_t time_reopen;
   gchar *file_name;
 
   StatsCounterItem *dropped_messages;
@@ -60,13 +59,6 @@ typedef struct
 
 } AvroDriver;
 
-typedef struct
-{
-  AvroDriver *driver;
-  avro_value_t *parent;
-  LogMessage *logmsg;
-} _NVFunctionUserData;
-
 /*
  * Called by YACC
  */
@@ -76,38 +68,30 @@ avro_mod_dd_set_destination_file(LogDriver *d, const gchar *filename)
 {
   AvroDriver *self = (AvroDriver *)d;
 
+  msg_debug("Set Avro datafile",
+            evt_tag_str("filename", filename),
+            NULL);
+
   g_free(self->file_name);
   self->file_name = g_strdup(filename);
 }
 
-/*
- * Utilities
- */
-void
-ignore_sigpipe (void)
-{
-  struct sigaction sa;
-
-  sa.sa_handler = SIG_IGN;
-  sigemptyset(&sa.sa_mask);
-  sa.sa_flags = 0;
-  sigaction(SIGPIPE, &sa, NULL);
-}
-
 static inline gint
-assert_zero(gint result)
+assert_zero(AvroDriver *self, gint result)
 {
   if (result != 0)
-    fprintf(stderr, "Error: %s\n", avro_strerror());
+    msg_error("Avro error", evt_tag_str("error", avro_strerror()),
+              evt_tag_str("driver", self->super.super.id), NULL);
 
   return result;
 }
 
 static inline void*
-assert_not_null(void *result)
+assert_not_null(AvroDriver *self, void *result)
 {
   if (result == NULL)
-    fprintf(stderr, "Error: %s\n", avro_strerror());
+    msg_error("Avro error", evt_tag_str("error", avro_strerror()),
+              evt_tag_str("driver", self->super.super.id), NULL);
 
   return result;
 }
@@ -163,15 +147,6 @@ read_content_from_file(char *file_name)
   return string;
 }
 
-static int
-is_file_exists(char *file_name)
-{
-  FILE *f = fopen(file_name, "rb");
-  if (f)
-    fclose(f);
-  return !!f;
-}
-
 static gboolean
 avro_mod_dd_datafile_open(AvroDriver *self, char *filename)
 {
@@ -181,17 +156,17 @@ avro_mod_dd_datafile_open(AvroDriver *self, char *filename)
   if (!schema_string)
     return -1;
 
-  error = assert_zero(avro_schema_from_json(schema_string, 0, &self->schema, &schema_error));
+  error = assert_zero(self, avro_schema_from_json(schema_string, 0, &self->schema, &schema_error));
   assert(self->schema != NULL);
-  assert_not_null(self->writer_iface = avro_generic_class_from_schema(self->schema));
+  assert_not_null(self, self->writer_iface = avro_generic_class_from_schema(self->schema));
 
-  if (is_file_exists(filename))
+  if (access(filename, W_OK) == 0)
     {
-      error |= assert_zero(avro_file_writer_open(filename, &self->data_file_writer));
+      error |= assert_zero(self, avro_file_writer_open(filename, &self->data_file_writer));
     }
   else
     {
-      error |= assert_zero(avro_file_writer_create(filename, self->schema, &self->data_file_writer));
+      error |= assert_zero(self, avro_file_writer_create(filename, self->schema, &self->data_file_writer));
     }
 
   free(schema_string);
@@ -202,7 +177,7 @@ avro_mod_dd_datafile_open(AvroDriver *self, char *filename)
 static gint
 avro_mod_dd_datafile_append_msg(AvroDriver *self, avro_value_t *avro_data)
 {
-  return assert_zero(avro_file_writer_append_value(self->data_file_writer, avro_data));
+  return assert_zero(self, avro_file_writer_append_value(self->data_file_writer, avro_data));
 }
 
 static int
@@ -210,9 +185,9 @@ avro_mod_dd_datafile_close(AvroDriver *self)
 {
   int error;
 
-  error = assert_zero(avro_file_writer_close(self->data_file_writer));
+  error = assert_zero(self, avro_file_writer_close(self->data_file_writer));
   avro_value_iface_decref(self->writer_iface);
-  error = assert_zero(avro_schema_decref(self->schema));
+  error = assert_zero(self, avro_schema_decref(self->schema));
 
   return error;
 }
@@ -220,61 +195,61 @@ avro_mod_dd_datafile_close(AvroDriver *self)
 static gint
 avro_mod_dd_init_msg(AvroDriver *self, avro_value_t *logmsg)
 {
-  return assert_zero(avro_generic_value_new(self->writer_iface, logmsg));
+  return assert_zero(self, avro_generic_value_new(self->writer_iface, logmsg));
 }
 
 static gint
-avro_mod_dd_set_priority(avro_value_t *parent, LogMessage *logmsg)
+avro_mod_dd_set_priority(AvroDriver *self, avro_value_t *parent, LogMessage *logmsg)
 {
   int error;
   avro_value_t field;
   avro_value_t branch;
 
-  error = assert_zero(avro_value_get_by_name(parent, PRIORITY, &field, NULL));
+  error = assert_zero(self, avro_value_get_by_name(parent, "PRIORITY", &field, NULL));
 
-  if (logmsg != NULL)
+  if (logmsg->pri != 0)
     {
-      error = assert_zero(avro_value_set_branch(&field, VALUE_BRANCH, &branch));
-      error = assert_zero(avro_value_set_int(&branch, logmsg->pri));
+      error = assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_int(&branch, logmsg->pri));
     }
   else
     {
-      error = assert_zero(avro_value_set_branch(&field, NULL_BRANCH, &branch));
-      error = assert_zero(avro_value_set_null(&branch));
+      error = assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_null(&branch));
     }
 
   return error;
 }
 
 static gint
-avro_mod_dd_set_timestamp(avro_value_t *parent, LogMessage *logmsg)
+avro_mod_dd_set_timestamp(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
 {
   int error;
   GString *ts;
   avro_value_t field;
   avro_value_t branch;
 
-  error = assert_zero(avro_value_get_by_name(parent, TIMESTAMP, &field, NULL));
+  error = assert_zero(self, avro_value_get_by_name(parent, "TIMESTAMP", &field, NULL));
 
-  if (logmsg != NULL)
+  if (&logmsg->timestamps[LM_TS_STAMP] != NULL)
     {
       ts = g_string_new("");
       log_stamp_format(&logmsg->timestamps[LM_TS_STAMP], ts, TS_FMT_ISO, -1, 0);
-      error = assert_zero(avro_value_set_branch(&field, VALUE_BRANCH, &branch));
-      error = assert_zero(avro_value_set_string(&branch, ts->str));
+      error = assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_string(&branch, ts->str));
       g_string_free(ts, TRUE);
     }
   else
     {
-      error = assert_zero(avro_value_set_branch(&field, NULL_BRANCH, &branch));
-      error = assert_zero(avro_value_set_null(&branch));
+      error = assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_null(&branch));
     }
 
   return error;
 }
 
 static gint
-avro_mod_dd_set_hostname(avro_value_t *parent, LogMessage *logmsg)
+avro_mod_dd_set_hostname(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
 {
   int error;
   const gchar *host;
@@ -282,25 +257,25 @@ avro_mod_dd_set_hostname(avro_value_t *parent, LogMessage *logmsg)
   avro_value_t field;
   avro_value_t branch;
 
-  error = avro_value_get_by_name(parent, HOSTNAME, &field, NULL);
+  error = avro_value_get_by_name(parent, "HOSTNAME", &field, NULL);
 
   if (logmsg != NULL)
     {
       host = log_msg_get_value(logmsg, log_msg_get_value_handle("HOST"), &size);
-      error = assert_zero(avro_value_set_branch(&field, VALUE_BRANCH, &branch));
-      error = assert_zero(avro_value_set_string(&branch, host));
+      error = assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_string(&branch, host));
     }
   else
     {
-      error = assert_zero(avro_value_set_branch(&field, NULL_BRANCH, &branch));
-      error = assert_zero(avro_value_set_null(&branch));
+      error = assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_null(&branch));
     }
 
   return error;
 }
 
 static gint
-avro_mod_dd_set_app_name(avro_value_t *parent, LogMessage *logmsg)
+avro_mod_dd_set_app_name(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
 {
   int error;
   avro_value_t field;
@@ -308,25 +283,25 @@ avro_mod_dd_set_app_name(avro_value_t *parent, LogMessage *logmsg)
   const gchar *app_name;
   gssize app_name_size;
 
-  error = assert_zero(avro_value_get_by_name(parent, APP_NAME, &field, NULL));
+  error = assert_zero(self, avro_value_get_by_name(parent, "APP_NAME", &field, NULL));
 
   if (logmsg == NULL ||
       !(app_name = log_msg_get_value(logmsg, log_msg_get_value_handle("PROGRAM"), &app_name_size)))
     {
-      error = assert_zero(avro_value_set_branch(&field, NULL_BRANCH, &branch));
-      error = assert_zero(avro_value_set_null(&branch));
+      error = assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_null(&branch));
     }
   else
     {
-      error = assert_zero(avro_value_set_branch(&field, VALUE_BRANCH, &branch));
-      error = assert_zero(avro_value_set_string_len(&branch, app_name, app_name_size));
+      error = assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_string_len(&branch, app_name, app_name_size));
     }
 
   return error;
 }
 
 static gint
-avro_mod_dd_set_procid(avro_value_t *parent, LogMessage *logmsg)
+avro_mod_dd_set_procid(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
 {
   int error;
   avro_value_t field;
@@ -334,25 +309,25 @@ avro_mod_dd_set_procid(avro_value_t *parent, LogMessage *logmsg)
   const gchar * pid;
   gssize size;
 
-  error = assert_zero(avro_value_get_by_name(parent, PROCID, &field, NULL));
+  error = assert_zero(self, avro_value_get_by_name(parent, "PROCID", &field, NULL));
 
   if (logmsg == NULL ||
       ((pid = log_msg_get_value(logmsg, log_msg_get_value_handle("PID"), &size)) && !(size > 0)))
     {
-      error = assert_zero(avro_value_set_branch(&field, NULL_BRANCH, &branch));
-      error = assert_zero(avro_value_set_null(&branch));
+      error = assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_null(&branch));
     }
   else
     {
-      error = assert_zero(avro_value_set_branch(&field, VALUE_BRANCH, &branch));
-      error = assert_zero(avro_value_set_string_len(&branch, pid, size));
+      error = assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_string_len(&branch, pid, size));
     }
 
   return error;
 }
 
 static gint
-avro_mod_dd_set_msgid(avro_value_t *parent, LogMessage *logmsg)
+avro_mod_dd_set_msgid(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
 {
   int error;
   avro_value_t field;
@@ -360,68 +335,38 @@ avro_mod_dd_set_msgid(avro_value_t *parent, LogMessage *logmsg)
   const gchar* msgid = NULL;
   gssize size;
 
-  error = assert_zero(avro_value_get_by_name(parent, MSGID, &field, NULL));
+  error = assert_zero(self, avro_value_get_by_name(parent, "MSGID", &field, NULL));
 
   if (logmsg == NULL ||
       ((msgid = log_msg_get_value(logmsg, log_msg_get_value_handle("MSGID"), &size)) && !(size > 0)))
     {
-      error = assert_zero(avro_value_set_branch(&field, NULL_BRANCH, &branch));
-      error = assert_zero(avro_value_set_null(&branch));
+      error = assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_null(&branch));
     }
   else
     {
-      error = assert_zero(avro_value_set_branch(&field, VALUE_BRANCH, &branch));
-      error = assert_zero(avro_value_set_string_len(&branch, msgid, size));
+      error = assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_string_len(&branch, msgid, size));
     }
 
   return error;
 }
 
 static const gchar*
-remove_leading_dot(const gchar* value)
-{
-  if (value[0] == '.')
-    return value + 1;
-  return value;
-}
-
-static const gchar*
 remove_sdata_prefix(const gchar* name)
 {
-  const gchar* value = name + strlen(SDATA_PREFIX);
-
-  return remove_leading_dot(value);
-}
-
-static gint
-get_param_position(const gchar* id_param)
-{
-  int i;
-  int token_pos = -1;
-  const gchar token = '.';
-
-  for (i = 0; i < strlen(id_param); i++)
-    {
-      if (id_param[i] == token)
-        {
-          token_pos = i;
-          break;
-        }
-    }
-
-  return token_pos;
+  return name + strlen(SDATA_PREFIX);
 }
 
 static gboolean
-parse_sdata_parts(const gchar* sdata, gchar** id, gchar** param)
+split_sdata_parts(const gchar* sdata, gchar** id, gchar** param)
 {
-  int param_pos;
-  gsize id_size;
+  gchar* dot_pos;
 
   const gchar* sdata_without_sdata_prefix = remove_sdata_prefix(sdata);
-  param_pos = get_param_position(sdata_without_sdata_prefix);
+  dot_pos = strchr(sdata_without_sdata_prefix, '.');
 
-  if (param_pos < 0)
+  if (dot_pos == NULL)
     {
       msg_error("Avro destiantion driver error",
                 evt_tag_str("error", "Unable to find a separator dot in sdata"),
@@ -429,14 +374,18 @@ parse_sdata_parts(const gchar* sdata, gchar** id, gchar** param)
       id = param = NULL;
       return FALSE;
     }
-
-  id_size = (param_pos + 1) * sizeof(gchar);
-  *id = (gchar*) g_malloc(id_size);
-  g_strlcpy(*id, sdata_without_sdata_prefix, param_pos + 1);
-  *param = g_strdup(sdata_without_sdata_prefix + param_pos + 1);
+  *id = g_strndup(sdata_without_sdata_prefix, dot_pos - sdata_without_sdata_prefix);
+  *param = g_strdup(dot_pos + 1);
 
   return TRUE;
 }
+
+typedef struct
+{
+  AvroDriver *driver;
+  avro_value_t *parent;
+  LogMessage *logmsg;
+} _NVFunctionUserData;
 
 static gboolean
 append_sdata(NVHandle handle, const gchar *name, const gchar *value, gssize value_len, gpointer user_data)
@@ -446,13 +395,14 @@ append_sdata(NVHandle handle, const gchar *name, const gchar *value, gssize valu
   avro_value_t sd_element;
   avro_value_t param_value;
   _NVFunctionUserData* priv_data = (_NVFunctionUserData*) user_data;
+  AvroDriver* self = priv_data->driver;
 
   if (log_msg_is_handle_sdata(handle))
     {
-      parse_sdata_parts(name, &id, &param);
-      assert_zero(avro_value_add(priv_data->parent, id, &sd_element, NULL, NULL));
-      assert_zero(avro_value_add(&sd_element, param, &param_value, NULL, NULL));
-      assert_zero(avro_value_set_string(&param_value, value));
+      split_sdata_parts(name, &id, &param);
+      assert_zero(self, avro_value_add(priv_data->parent, id, &sd_element, NULL, NULL));
+      assert_zero(self, avro_value_add(&sd_element, param, &param_value, NULL, NULL));
+      assert_zero(self, avro_value_set_string(&param_value, value));
     }
 
   g_free(id);
@@ -469,16 +419,16 @@ avro_mod_dd_set_sdata(AvroDriver *self, avro_value_t *parent, LogMessage *logmsg
   avro_value_t branch;
   _NVFunctionUserData priv_data;
 
-  error = assert_zero(avro_value_get_by_name(parent, STRUCTURED_DATA, &field, NULL));
+  error = assert_zero(self, avro_value_get_by_name(parent, "STRUCTURED_DATA", &field, NULL));
 
   if (logmsg == NULL || logmsg->num_sdata == 0)
     {
-      error = assert_zero(avro_value_set_branch(&field, NULL_BRANCH, &branch));
-      error = assert_zero(avro_value_set_null(&branch));
+      error = assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_null(&branch));
     }
   else
     {
-      assert_zero(avro_value_set_branch(&field, VALUE_BRANCH, &branch));
+      assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
       priv_data.driver = self;
       priv_data.parent = &branch;
       priv_data.logmsg = logmsg;
@@ -489,7 +439,7 @@ avro_mod_dd_set_sdata(AvroDriver *self, avro_value_t *parent, LogMessage *logmsg
 }
 
 static gint
-avro_mod_dd_set_message(avro_value_t *parent, LogMessage *logmsg)
+avro_mod_dd_set_message(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
 {
   int error;
   avro_value_t field;
@@ -497,18 +447,18 @@ avro_mod_dd_set_message(avro_value_t *parent, LogMessage *logmsg)
   const gchar *message;
   gssize message_size;
 
-  error = assert_zero(avro_value_get_by_name(parent, MSG, &field, NULL));
+  error = assert_zero(self, avro_value_get_by_name(parent, "MSG", &field, NULL));
 
   if (logmsg == NULL ||
       !(message = log_msg_get_value(logmsg, log_msg_get_value_handle("MESSAGE"), &message_size)))
     {
-      error = assert_zero(avro_value_set_branch(&field, NULL_BRANCH, &branch));
-      error = assert_zero(avro_value_set_null(&branch));
+      error = assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_null(&branch));
     }
   else
     {
-      error = assert_zero(avro_value_set_branch(&field, VALUE_BRANCH, &branch));
-      error = assert_zero(avro_value_set_string_len(&branch, message, message_size));
+      error = assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
+      error = assert_zero(self, avro_value_set_string_len(&branch, message, message_size));
     }
 
   return error;
@@ -519,14 +469,14 @@ avro_mod_dd_fill_msg(AvroDriver *self, LogMessage *logmsg, avro_value_t *avro_da
 {
   int error;
 
-  error =  avro_mod_dd_set_priority(avro_data, logmsg);
-  error |= avro_mod_dd_set_timestamp(avro_data, logmsg);
-  error |= avro_mod_dd_set_hostname(avro_data, logmsg);
-  error |= avro_mod_dd_set_app_name(avro_data, logmsg);
-  error |= avro_mod_dd_set_procid(avro_data, logmsg);
-  error |= avro_mod_dd_set_msgid(avro_data, logmsg);
+  error =  avro_mod_dd_set_priority(self, avro_data, logmsg);
+  error |= avro_mod_dd_set_timestamp(self, avro_data, logmsg);
+  error |= avro_mod_dd_set_hostname(self, avro_data, logmsg);
+  error |= avro_mod_dd_set_app_name(self, avro_data, logmsg);
+  error |= avro_mod_dd_set_procid(self, avro_data, logmsg);
+  error |= avro_mod_dd_set_msgid(self, avro_data, logmsg);
   error |= avro_mod_dd_set_sdata(self, avro_data, logmsg);
-  error |= avro_mod_dd_set_message(avro_data, logmsg);
+  error |= avro_mod_dd_set_message(self, avro_data, logmsg);
 
   return error;
 }
@@ -538,6 +488,7 @@ avro_dd_format_stats_instance(AvroDriver *self)
 
   g_snprintf(persist_name, sizeof(persist_name),
              "avro,%s", self->file_name);
+
   return persist_name;
 }
 
@@ -555,7 +506,7 @@ avro_mod_dd_worker_insert(AvroDriver *self)
 
   msg_set_context(msg);
 
-  error = assert_zero(avro_generic_value_new(self->writer_iface, &avro_logmsg));
+  error = assert_zero(self, avro_generic_value_new(self->writer_iface, &avro_logmsg));
 
   error |= avro_mod_dd_init_msg(self, &avro_logmsg);
   error |= avro_mod_dd_fill_msg(self, msg, &avro_logmsg);
@@ -564,7 +515,7 @@ avro_mod_dd_worker_insert(AvroDriver *self)
   avro_value_iface_decref(self->writer_iface);
   avro_value_decref(&avro_logmsg);
 
-  error = (success) ? TRUE : FALSE;
+  success = (error == 0) ? TRUE : FALSE;
 
   if (success)
     {
@@ -598,8 +549,6 @@ avro_mod_dd_worker_thread(gpointer arg)
   msg_debug("Worker thread started",
             evt_tag_str("driver", self->super.super.id),
             NULL);
-
-  ignore_sigpipe();
 
   while (!self->writer_thread_terminate)
     {
@@ -670,16 +619,16 @@ avro_mod_dd_init(LogPipe *s)
   if (!error)
     {
       msg_error("Unable to open Avro datafile",
+                evt_tag_str("driver", self->super.super.id),
                 evt_tag_str("filename", self->file_name),
                 NULL);
       return FALSE;
     }
 
   msg_verbose("Avro datafile has been opened",
+              evt_tag_str("driver", self->super.super.id),
               evt_tag_str("filename", self->file_name),
               NULL);
-  if (cfg)
-    self->time_reopen = cfg->time_reopen;
 
   self->queue = log_dest_driver_acquire_queue(&self->super, avro_dd_format_stats_instance(self));
 
@@ -707,11 +656,13 @@ avro_mod_dd_deinit(LogPipe *s)
   if (error)
     {
       msg_error("Unable to close Avro datafile",
+                evt_tag_str("driver", self->super.super.id),
                 evt_tag_str("filename", self->file_name),
                 NULL);
     }
 
   msg_debug("Avro datafile closed",
+            evt_tag_str("driver", self->super.super.id),
             evt_tag_str("filename", self->file_name),
             NULL);
 

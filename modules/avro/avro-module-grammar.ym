@@ -45,7 +45,6 @@ extern LogDriver *last_driver;
 
 /* INCLUDE_DECLS */
 
-%token KW_FILE
 %token KW_AVRO
 
 %%
@@ -55,18 +54,12 @@ start
           {
             last_driver = *instance = avro_mod_dd_new();
           }
-          '(' avro_mod_options ')'         { YYACCEPT; }
+          '(' avro_mod_file ')'         { YYACCEPT; }
 	;
 
-avro_mod_options
-        : avro_mod_option avro_mod_options
-	|
-	;
-
-avro_mod_option
+avro_mod_file
         : string  { avro_mod_dd_set_destination_file(last_driver, $1);
           free($1); }
-         | dest_driver_option
          ;
 
 /* INCLUDE_RULES */
