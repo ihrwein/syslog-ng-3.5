@@ -30,33 +30,18 @@
 #include "stats.h"
 #include "logqueue.h"
 #include "plugin-types.h"
+#include "logthrdestdrv.h"
 
 #include <signal.h>
 #include <assert.h>
 
 typedef struct
 {
-  LogDestDriver super;
+  LogThrDestDriver super;
   avro_schema_t schema;
   avro_value_iface_t *writer_iface;
   avro_file_writer_t data_file_writer;
-
   gchar *file_name;
-
-  StatsCounterItem *dropped_messages;
-  StatsCounterItem *stored_messages;
-
-  /* Thread related stuff; shared */
-  GThread *writer_thread;
-  GMutex *suspend_mutex;
-  GCond *writer_thread_wakeup_cond;
-
-  gboolean writer_thread_terminate;
-  gboolean writer_thread_suspended;
-  GTimeVal writer_thread_suspend_target;
-
-  LogQueue *queue;
-
 } AvroDriver;
 
 /*
@@ -81,7 +66,7 @@ assert_zero(AvroDriver *self, gint result)
 {
   if (result != 0)
     msg_error("Avro error", evt_tag_str("error", avro_strerror()),
-              evt_tag_str("driver", self->super.super.id), NULL);
+              evt_tag_str("driver", self->super.super.super.id), NULL);
 
   return result;
 }
@@ -91,18 +76,9 @@ assert_not_null(AvroDriver *self, void *result)
 {
   if (result == NULL)
     msg_error("Avro error", evt_tag_str("error", avro_strerror()),
-              evt_tag_str("driver", self->super.super.id), NULL);
+              evt_tag_str("driver", self->super.super.super.id), NULL);
 
   return result;
-}
-
-static void
-avro_mod_dd_new_suspend(AvroDriver *self)
-{
-  self->writer_thread_suspended = TRUE;
-  g_get_current_time(&self->writer_thread_suspend_target);
-//  g_time_val_add(&self->writer_thread_suspend_target,
-//                 self->time_reopen * 1000000);
 }
 
 static int
@@ -250,7 +226,7 @@ avro_mod_dd_set_timestamp(AvroDriver* self, avro_value_t *parent, LogMessage *lo
 
 static gint
 avro_mod_dd_set_string(AvroDriver *self, avro_value_t *parent,
-                       LogMessage *logmsg, const char *handle_name[],
+                       LogMessage *logmsg, const char *handle_name,
                        const char *schema_field_name)
 {
   int error;
@@ -432,8 +408,9 @@ avro_mod_dd_fill_msg(AvroDriver *self, LogMessage *logmsg, avro_value_t *avro_da
 }
 
 static gchar *
-avro_dd_format_stats_instance(AvroDriver *self)
+avro_mod_dd_format_stats_instance(LogThrDestDriver *s)
 {
+  AvroDriver *self = (AvroDriver*) s;
   static gchar persist_name[1024];
 
   g_snprintf(persist_name, sizeof(persist_name),
@@ -442,15 +419,30 @@ avro_dd_format_stats_instance(AvroDriver *self)
   return persist_name;
 }
 
+static gchar *
+avro_mod_dd_format_persist_name(LogThrDestDriver *s)
+{
+  AvroDriver *self = (AvroDriver*) s;
+  static gchar persist_name[1024];
+
+  g_snprintf(persist_name, sizeof(persist_name),
+             "avro(%s)", self->file_name);
+
+  return persist_name;
+}
+
+
 static gboolean
-avro_mod_dd_worker_insert(AvroDriver *self)
+avro_mod_dd_worker_insert(LogThrDestDriver *s)
 {
   gboolean success;
   LogMessage *msg;
   avro_value_t avro_logmsg;
   int error;
+  AvroDriver *self = (AvroDriver*) s;
+
   LogPathOptions path_options = LOG_PATH_OPTIONS_INIT;
-  success = log_queue_pop_head(self->queue, &msg, &path_options, FALSE, FALSE);
+  success = log_queue_pop_head(self->super.queue, &msg, &path_options, FALSE, FALSE);
   if (!success)
     return TRUE;
 
@@ -469,130 +461,48 @@ avro_mod_dd_worker_insert(AvroDriver *self)
 
   if (success)
     {
-      stats_counter_inc(self->stored_messages);
+      stats_counter_inc(self->super.stored_messages);
       log_msg_ack(msg, &path_options);
       log_msg_unref(msg);
     }
   else
     {
-      log_queue_push_head(self->queue, msg, &path_options);
+      log_queue_push_head(self->super.queue, msg, &path_options);
     }
 
   return success;
-}
-
-static void
-avro_mod_dd_new_message_became_available_in_the_queue(gpointer user_data)
-{
-  AvroDriver *self = (AvroDriver *) user_data;
-
-  g_mutex_lock(self->suspend_mutex);
-  g_cond_signal(self->writer_thread_wakeup_cond);
-  g_mutex_unlock(self->suspend_mutex);
-}
-
-static gpointer
-avro_mod_dd_worker_thread(gpointer arg)
-{
-  AvroDriver *self = (AvroDriver *)arg;
-
-  msg_debug("Worker thread started",
-            evt_tag_str("driver", self->super.super.id),
-            NULL);
-
-  while (!self->writer_thread_terminate)
-    {
-      g_mutex_lock(self->suspend_mutex);
-      if (self->writer_thread_suspended)
-        {
-          g_cond_timed_wait(self->writer_thread_wakeup_cond,
-                            self->suspend_mutex,
-                            &self->writer_thread_suspend_target);
-          self->writer_thread_suspended = FALSE;
-          g_mutex_unlock(self->suspend_mutex);
-        }
-      else if (!log_queue_check_items(self->queue, NULL, avro_mod_dd_new_message_became_available_in_the_queue, self, NULL))
-        {
-          g_cond_wait(self->writer_thread_wakeup_cond, self->suspend_mutex);
-          g_mutex_unlock(self->suspend_mutex);
-        }
-      else
-        {
-          g_mutex_unlock(self->suspend_mutex);
-        }
-
-      if (self->writer_thread_terminate)
-        break;
-
-      if (!avro_mod_dd_worker_insert(self))
-        {
-          avro_mod_dd_new_suspend(self);
-        }
-    }
-
-  msg_debug("Worker thread finished",
-            evt_tag_str("driver", self->super.super.id),
-            NULL);
-
-  return NULL;
 }
 
 /*
  * Main thread
  */
 
-static void
-avro_mod_dd_start_thread(AvroDriver *self)
-{
-  self->writer_thread = create_worker_thread(avro_mod_dd_worker_thread, self, TRUE, NULL);
-}
-
-static void
-avro_mod_dd_stop_thread(AvroDriver *self)
-{
-  self->writer_thread_terminate = TRUE;
-  g_mutex_lock(self->suspend_mutex);
-  g_cond_signal(self->writer_thread_wakeup_cond);
-  g_mutex_unlock(self->suspend_mutex);
-  g_thread_join(self->writer_thread);
-}
-
 static gboolean
 avro_mod_dd_init(LogPipe *s)
 {
   AvroDriver *self = (AvroDriver *)s;
-  GlobalConfig *cfg = log_pipe_get_config(s);
   gboolean error;
+
+  if (!log_threaded_dest_driver_init_method(s))
+    return FALSE;
 
   error = avro_mod_dd_datafile_open(self, self->file_name);
 
   if (!error)
     {
       msg_error("Unable to open Avro datafile",
-                evt_tag_str("driver", self->super.super.id),
+                evt_tag_str("driver", self->super.super.super.id),
                 evt_tag_str("filename", self->file_name),
                 NULL);
       return FALSE;
     }
 
   msg_verbose("Avro datafile has been opened",
-              evt_tag_str("driver", self->super.super.id),
+              evt_tag_str("driver", self->super.super.super.id),
               evt_tag_str("filename", self->file_name),
               NULL);
 
-  self->queue = log_dest_driver_acquire_queue(&self->super, avro_dd_format_stats_instance(self));
-
-  stats_lock();
-  stats_register_counter(0, SCS_AVRO | SCS_DESTINATION, self->super.super.id,
-                         avro_dd_format_stats_instance(self),
-                         SC_TYPE_STORED, &self->stored_messages);
-  stats_register_counter(0, SCS_AVRO | SCS_DESTINATION, self->super.super.id,
-                         avro_dd_format_stats_instance(self),
-                         SC_TYPE_DROPPED, &self->dropped_messages);
-  stats_unlock();
-
-  avro_mod_dd_start_thread(self);
-
+  log_threaded_dest_driver_start(&self->super);
   return TRUE;
 }
 
@@ -606,59 +516,17 @@ avro_mod_dd_deinit(LogPipe *s)
   if (error)
     {
       msg_error("Unable to close Avro datafile",
-                evt_tag_str("driver", self->super.super.id),
+                evt_tag_str("driver", self->super.super.super.id),
                 evt_tag_str("filename", self->file_name),
                 NULL);
     }
 
   msg_debug("Avro datafile closed",
-            evt_tag_str("driver", self->super.super.id),
+            evt_tag_str("driver", self->super.super.super.id),
             evt_tag_str("filename", self->file_name),
             NULL);
 
-  avro_mod_dd_stop_thread(self);
-  log_queue_reset_parallel_push(self->queue);
-
-  stats_lock();
-  stats_unregister_counter(SCS_AVRO | SCS_DESTINATION, self->super.super.id,
-                           avro_dd_format_stats_instance(self),
-                           SC_TYPE_STORED, &self->stored_messages);
-  stats_unregister_counter(SCS_AVRO | SCS_DESTINATION, self->super.super.id,
-                           avro_dd_format_stats_instance(self),
-                           SC_TYPE_DROPPED, &self->dropped_messages);
-  stats_unlock();
-
-  return TRUE;
-}
-
-static void
-avro_mod_dd_free(LogPipe *d)
-{
-  AvroDriver *self = (AvroDriver *)d;
-
-  g_mutex_free(self->suspend_mutex);
-  g_cond_free(self->writer_thread_wakeup_cond);
-
-  if (self->queue)
-    log_queue_unref(self->queue);
-
-  log_dest_driver_free(d);
-}
-
-static void
-avro_mod_dd_queue(LogPipe *s, LogMessage *msg,
-                  const LogPathOptions *path_options, gpointer user_data)
-{
-  AvroDriver *self = (AvroDriver *)s;
-  LogPathOptions local_options;
-
-  if (!path_options->flow_control_requested)
-    path_options = log_msg_break_ack(msg, path_options, &local_options);
-
-  log_msg_add_ack(msg, path_options);
-  log_queue_push_tail(self->queue, log_msg_ref(msg), path_options);
-
-  log_dest_driver_queue_method(s, msg, path_options, user_data);
+  return log_threaded_dest_driver_deinit_method(s);
 }
 
 /*
@@ -670,13 +538,15 @@ avro_mod_dd_new(void)
 {
   AvroDriver *self = g_new0(AvroDriver, 1);
 
-  log_dest_driver_init_instance(&self->super);
-  self->super.super.super.init = avro_mod_dd_init;
-  self->super.super.super.deinit = avro_mod_dd_deinit;
-  self->super.super.super.queue = avro_mod_dd_queue;
-  self->super.super.super.free_fn = avro_mod_dd_free;
-  self->writer_thread_wakeup_cond = g_cond_new();
-  self->suspend_mutex = g_mutex_new();
+  log_threaded_dest_driver_init_instance(&self->super);
+
+  self->super.super.super.super.init = avro_mod_dd_init;
+  self->super.super.super.super.deinit = avro_mod_dd_deinit;
+
+  self->super.worker.insert = avro_mod_dd_worker_insert;
+  self->super.format.stats_instance = avro_mod_dd_format_stats_instance;
+  self->super.format.persist_name = avro_mod_dd_format_persist_name;
+  self->super.stats_source = SCS_AVRO;
 
   return (LogDriver *)self;
 }
