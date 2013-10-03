@@ -249,21 +249,25 @@ avro_mod_dd_set_timestamp(AvroDriver* self, avro_value_t *parent, LogMessage *lo
 }
 
 static gint
-avro_mod_dd_set_hostname(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
+avro_mod_dd_set_string(AvroDriver *self, avro_value_t *parent,
+                       LogMessage *logmsg, const char *handle_name[],
+                       const char *schema_field_name)
 {
   int error;
-  const gchar *host;
+  const gchar *handle_value;
   gssize size;
   avro_value_t field;
   avro_value_t branch;
 
-  error = avro_value_get_by_name(parent, "HOSTNAME", &field, NULL);
+  error = avro_value_get_by_name(parent, schema_field_name, &field, NULL);
 
-  if (logmsg != NULL)
+  if (logmsg != NULL ||
+      ((handle_value = log_msg_get_value(logmsg, log_msg_get_value_handle(handle_name),
+                                         &size)) && !(size > 0)))
     {
-      host = log_msg_get_value(logmsg, log_msg_get_value_handle("HOST"), &size);
+      handle_value = log_msg_get_value(logmsg, log_msg_get_value_handle(handle_name), &size);
       error = assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
-      error = assert_zero(self, avro_value_set_string(&branch, host));
+      error = assert_zero(self, avro_value_set_string(&branch, handle_value));
     }
   else
     {
@@ -272,84 +276,30 @@ avro_mod_dd_set_hostname(AvroDriver* self, avro_value_t *parent, LogMessage *log
     }
 
   return error;
+}
+
+static gint
+avro_mod_dd_set_hostname(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
+{
+  return avro_mod_dd_set_string(self, parent, logmsg, "HOST", "HOSTNAME");
 }
 
 static gint
 avro_mod_dd_set_app_name(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
 {
-  int error;
-  avro_value_t field;
-  avro_value_t branch;
-  const gchar *app_name;
-  gssize app_name_size;
-
-  error = assert_zero(self, avro_value_get_by_name(parent, "APP_NAME", &field, NULL));
-
-  if (logmsg == NULL ||
-      !(app_name = log_msg_get_value(logmsg, log_msg_get_value_handle("PROGRAM"), &app_name_size)))
-    {
-      error = assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
-      error = assert_zero(self, avro_value_set_null(&branch));
-    }
-  else
-    {
-      error = assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
-      error = assert_zero(self, avro_value_set_string_len(&branch, app_name, app_name_size));
-    }
-
-  return error;
+  return avro_mod_dd_set_string(self, parent, logmsg, "PROGRAM", "APP_NAME");
 }
 
 static gint
 avro_mod_dd_set_procid(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
 {
-  int error;
-  avro_value_t field;
-  avro_value_t branch;
-  const gchar * pid;
-  gssize size;
-
-  error = assert_zero(self, avro_value_get_by_name(parent, "PROCID", &field, NULL));
-
-  if (logmsg == NULL ||
-      ((pid = log_msg_get_value(logmsg, log_msg_get_value_handle("PID"), &size)) && !(size > 0)))
-    {
-      error = assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
-      error = assert_zero(self, avro_value_set_null(&branch));
-    }
-  else
-    {
-      error = assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
-      error = assert_zero(self, avro_value_set_string_len(&branch, pid, size));
-    }
-
-  return error;
+  return avro_mod_dd_set_string(self, parent, logmsg, "PID", "PROCID");
 }
 
 static gint
 avro_mod_dd_set_msgid(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
 {
-  int error;
-  avro_value_t field;
-  avro_value_t branch;
-  const gchar* msgid = NULL;
-  gssize size;
-
-  error = assert_zero(self, avro_value_get_by_name(parent, "MSGID", &field, NULL));
-
-  if (logmsg == NULL ||
-      ((msgid = log_msg_get_value(logmsg, log_msg_get_value_handle("MSGID"), &size)) && !(size > 0)))
-    {
-      error = assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
-      error = assert_zero(self, avro_value_set_null(&branch));
-    }
-  else
-    {
-      error = assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
-      error = assert_zero(self, avro_value_set_string_len(&branch, msgid, size));
-    }
-
-  return error;
+  return avro_mod_dd_set_string(self, parent, logmsg, "MSGID", "MSGID");
 }
 
 static const gchar*
