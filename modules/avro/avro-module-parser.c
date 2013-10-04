@@ -30,6 +30,7 @@ extern int avro_mod_debug;
 int avro_mod_parse(CfgLexer *lexer, LogDriver **instance, gpointer arg);
 
 static CfgLexerKeyword avro_mod_keywords[] = {
+  { "stamp",                    KW_AVRO_STAMP },
   { "avro",			KW_AVRO },
   { NULL },
 };

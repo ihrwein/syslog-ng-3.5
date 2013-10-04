@@ -36,21 +36,10 @@
 
 #define SDATA_PREFIX  ".SDATA."
 
-#define LOG_MSG		"LOG_MSG"
-
-#define PRIORITY	"PRIORITY"
-#define _VERSION        "VERSION"
-#define TIMESTAMP	"TIMESTAMP"
-#define HOSTNAME	"HOSTNAME"
-#define APP_NAME        "APP_NAME"
-#define PROCID          "PROCID"
-#define MSGID           "MSGID"
-#define STRUCTURED_DATA "STRUCTURED_DATA"
-#define SD_ID           "SD_ID"
-#define MSG             "MSG"
-
 LogDriver *avro_mod_dd_new(void);
 
-void avro_mod_dd_set_destination_file(LogDriver *d, const gchar *filename);
+void avro_mod_dd_set_destination_file(LogDriver *d, LogTemplate *filename);
+void avro_mod_dd_set_timestamp(LogDriver *d, LogTemplate *stamp);
+LogTemplateOptions* avro_mod_dd_get_template_options(LogDriver *s);
 
 #endif

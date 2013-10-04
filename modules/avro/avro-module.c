@@ -41,7 +41,13 @@ typedef struct
   avro_schema_t schema;
   avro_value_iface_t *writer_iface;
   avro_file_writer_t data_file_writer;
-  gchar *file_name;
+  LogTemplateOptions template_options;
+  LogTemplate *file_name;
+  GString *current_file_name;
+  GString *active_file_name;
+  LogTemplate* timestamp;
+  GString* current_timestamp;
+  gint32 seq_num;
 } AvroDriver;
 
 /*
@@ -49,16 +55,28 @@ typedef struct
  */
 
 void
-avro_mod_dd_set_destination_file(LogDriver *d, const gchar *filename)
+avro_mod_dd_set_destination_file(LogDriver *d, LogTemplate *filename)
 {
   AvroDriver *self = (AvroDriver *)d;
 
-  msg_debug("Set Avro datafile",
-            evt_tag_str("filename", filename),
-            NULL);
+  log_template_unref(self->file_name);
+  self->file_name = log_template_ref(filename);
+}
 
-  g_free(self->file_name);
-  self->file_name = g_strdup(filename);
+void
+avro_mod_dd_set_timestamp(LogDriver *d, LogTemplate *stamp)
+{
+  AvroDriver *self = (AvroDriver *)d;
+
+  log_template_unref(self->timestamp);
+  self->timestamp = log_template_ref(stamp);
+}
+
+LogTemplateOptions *
+avro_mod_dd_get_template_options(LogDriver *s)
+{
+  AvroDriver *self = (AvroDriver*) s;
+  return &self->template_options;
 }
 
 static inline gint
@@ -130,7 +148,13 @@ avro_mod_dd_datafile_open(AvroDriver *self, char *filename)
   avro_schema_error_t schema_error;
   char *schema_string = read_content_from_file(AVRO_SCHEMA_FILE);
   if (!schema_string)
-    return -1;
+    {
+      msg_error("Unable to open Avro schema file",
+                evt_tag_str("driver", self->super.super.super.id),
+                evt_tag_str("filename", AVRO_SCHEMA_FILE),
+                NULL);
+      return FALSE;
+    }
 
   error = assert_zero(self, avro_schema_from_json(schema_string, 0, &self->schema, &schema_error));
   assert(self->schema != NULL);
@@ -146,6 +170,20 @@ avro_mod_dd_datafile_open(AvroDriver *self, char *filename)
     }
 
   free(schema_string);
+
+  if (error)
+    {
+      msg_error("Unable to open Avro datafile",
+                evt_tag_str("driver", self->super.super.super.id),
+                evt_tag_str("filename", filename),
+                NULL);
+      return FALSE;
+    }
+
+  msg_verbose("Avro datafile has been opened",
+              evt_tag_str("driver", self->super.super.super.id),
+              evt_tag_str("filename", filename),
+              NULL);
 
   return (error == 0) ? TRUE : FALSE;
 }
@@ -165,6 +203,19 @@ avro_mod_dd_datafile_close(AvroDriver *self)
   avro_value_iface_decref(self->writer_iface);
   error = assert_zero(self, avro_schema_decref(self->schema));
 
+  if (error)
+    {
+      msg_error("Unable to close Avro datafile",
+                evt_tag_str("driver", self->super.super.super.id),
+                evt_tag_str("filename", self->current_file_name->str),
+                NULL);
+    }
+
+  msg_debug("Avro datafile closed",
+            evt_tag_str("driver", self->super.super.super.id),
+            evt_tag_str("filename", self->current_file_name->str),
+            NULL);
+
   return error;
 }
 
@@ -172,6 +223,12 @@ static gint
 avro_mod_dd_init_msg(AvroDriver *self, avro_value_t *logmsg)
 {
   return assert_zero(self, avro_generic_value_new(self->writer_iface, logmsg));
+}
+
+static void
+avro_mod_dd_free_msg(avro_value_t *logmsg)
+{
+  return avro_value_decref(logmsg);
 }
 
 static gint
@@ -198,22 +255,21 @@ avro_mod_dd_set_priority(AvroDriver *self, avro_value_t *parent, LogMessage *log
 }
 
 static gint
-avro_mod_dd_set_timestamp(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
+avro_mod_dd_set_stamp(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
 {
   int error;
-  GString *ts;
   avro_value_t field;
   avro_value_t branch;
 
   error = assert_zero(self, avro_value_get_by_name(parent, "TIMESTAMP", &field, NULL));
+  log_template_format(self->timestamp, logmsg, &self->template_options, LTZ_SEND,
+                      self->seq_num, NULL, self->current_timestamp);
 
-  if (&logmsg->timestamps[LM_TS_STAMP] != NULL)
+
+  if (self->current_timestamp->len > 0)
     {
-      ts = g_string_new("");
-      log_stamp_format(&logmsg->timestamps[LM_TS_STAMP], ts, TS_FMT_ISO, -1, 0);
       error = assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
-      error = assert_zero(self, avro_value_set_string(&branch, ts->str));
-      g_string_free(ts, TRUE);
+      error = assert_zero(self, avro_value_set_string(&branch, self->current_timestamp->str));
     }
   else
     {
@@ -396,7 +452,7 @@ avro_mod_dd_fill_msg(AvroDriver *self, LogMessage *logmsg, avro_value_t *avro_da
   int error;
 
   error =  avro_mod_dd_set_priority(self, avro_data, logmsg);
-  error |= avro_mod_dd_set_timestamp(self, avro_data, logmsg);
+  error |= avro_mod_dd_set_stamp(self, avro_data, logmsg);
   error |= avro_mod_dd_set_hostname(self, avro_data, logmsg);
   error |= avro_mod_dd_set_app_name(self, avro_data, logmsg);
   error |= avro_mod_dd_set_procid(self, avro_data, logmsg);
@@ -414,7 +470,7 @@ avro_mod_dd_format_stats_instance(LogThrDestDriver *s)
   static gchar persist_name[1024];
 
   g_snprintf(persist_name, sizeof(persist_name),
-             "avro,%s", self->file_name);
+             "avro,%s", self->file_name->template);
 
   return persist_name;
 }
@@ -426,7 +482,7 @@ avro_mod_dd_format_persist_name(LogThrDestDriver *s)
   static gchar persist_name[1024];
 
   g_snprintf(persist_name, sizeof(persist_name),
-             "avro(%s)", self->file_name);
+             "avro(%s)", self->file_name->template);
 
   return persist_name;
 }
@@ -439,6 +495,7 @@ avro_mod_dd_worker_insert(LogThrDestDriver *s)
   LogMessage *msg;
   avro_value_t avro_logmsg;
   int error;
+  gboolean is_same_file;
   AvroDriver *self = (AvroDriver*) s;
 
   LogPathOptions path_options = LOG_PATH_OPTIONS_INIT;
@@ -448,20 +505,30 @@ avro_mod_dd_worker_insert(LogThrDestDriver *s)
 
   msg_set_context(msg);
 
-  error = assert_zero(self, avro_generic_value_new(self->writer_iface, &avro_logmsg));
+  log_template_format(self->file_name, msg, &self->template_options, LTZ_SEND,
+                      self->seq_num, NULL, self->current_file_name);
 
-  error |= avro_mod_dd_init_msg(self, &avro_logmsg);
+  is_same_file = g_string_equal(self->active_file_name, self->current_file_name);
+
+  if (!is_same_file)
+    {
+      if (self->active_file_name->len > 0)
+        error = avro_mod_dd_datafile_close(self);
+      g_string_assign(self->active_file_name, self->current_file_name->str);
+      error = avro_mod_dd_datafile_open(self, self->active_file_name->str);
+    }
+
+  error = avro_mod_dd_init_msg(self, &avro_logmsg);
   error |= avro_mod_dd_fill_msg(self, msg, &avro_logmsg);
   error |= avro_mod_dd_datafile_append_msg(self, &avro_logmsg);
-
-  avro_value_iface_decref(self->writer_iface);
-  avro_value_decref(&avro_logmsg);
+  avro_mod_dd_free_msg(&avro_logmsg);
 
   success = (error == 0) ? TRUE : FALSE;
 
   if (success)
     {
       stats_counter_inc(self->super.stored_messages);
+      step_sequence_number(&self->seq_num);
       log_msg_ack(msg, &path_options);
       log_msg_unref(msg);
     }
@@ -481,26 +548,21 @@ static gboolean
 avro_mod_dd_init(LogPipe *s)
 {
   AvroDriver *self = (AvroDriver *)s;
-  gboolean error;
+  GlobalConfig *cfg = log_pipe_get_config(s);
 
   if (!log_threaded_dest_driver_init_method(s))
     return FALSE;
 
-  error = avro_mod_dd_datafile_open(self, self->file_name);
+  log_template_options_init(&self->template_options, cfg);
+  self->current_file_name = g_string_sized_new(128);
+  self->active_file_name = g_string_sized_new(128);
 
-  if (!error)
+  if (self->timestamp == NULL)
     {
-      msg_error("Unable to open Avro datafile",
-                evt_tag_str("driver", self->super.super.super.id),
-                evt_tag_str("filename", self->file_name),
-                NULL);
-      return FALSE;
+      self->timestamp = log_template_new(cfg, NULL);
+      log_template_compile(self->timestamp, "$STAMP", NULL);
     }
-
-  msg_verbose("Avro datafile has been opened",
-              evt_tag_str("driver", self->super.super.super.id),
-              evt_tag_str("filename", self->file_name),
-              NULL);
+  self->current_timestamp = g_string_sized_new(128);
 
   log_threaded_dest_driver_start(&self->super);
   return TRUE;
@@ -512,19 +574,13 @@ avro_mod_dd_deinit(LogPipe *s)
   AvroDriver *self = (AvroDriver *)s;
   int error;
 
-  error = avro_mod_dd_datafile_close(self);
-  if (error)
-    {
-      msg_error("Unable to close Avro datafile",
-                evt_tag_str("driver", self->super.super.super.id),
-                evt_tag_str("filename", self->file_name),
-                NULL);
-    }
+  if (self->active_file_name->len > 0)
+    error = avro_mod_dd_datafile_close(self);
 
-  msg_debug("Avro datafile closed",
-            evt_tag_str("driver", self->super.super.super.id),
-            evt_tag_str("filename", self->file_name),
-            NULL);
+  g_string_free(self->active_file_name, TRUE);
+  g_string_free(self->current_file_name, TRUE);
+  g_string_free(self->current_timestamp, TRUE);
+  //log_template_unref(self->timestamp);
 
   return log_threaded_dest_driver_deinit_method(s);
 }
@@ -547,6 +603,9 @@ avro_mod_dd_new(void)
   self->super.format.stats_instance = avro_mod_dd_format_stats_instance;
   self->super.format.persist_name = avro_mod_dd_format_persist_name;
   self->super.stats_source = SCS_AVRO;
+
+  init_sequence_number(&self->seq_num);
+  log_template_options_defaults(&self->template_options);
 
   return (LogDriver *)self;
 }

@@ -29,11 +29,9 @@
 
 %code {
 
-#include "cfg-parser.h"
+#include "cfg-grammar.h"
 #include "avro-module-grammar.h"
 #include "plugin.h"
-
-extern LogDriver *last_driver;
 
 }
 
@@ -46,6 +44,7 @@ extern LogDriver *last_driver;
 /* INCLUDE_DECLS */
 
 %token KW_AVRO
+%token KW_AVRO_STAMP
 
 %%
 
@@ -54,12 +53,22 @@ start
           {
             last_driver = *instance = avro_mod_dd_new();
           }
-          '(' avro_mod_file ')'         { YYACCEPT; }
+          '(' avro_mod_file avro_mod_options ')'         { YYACCEPT; }
 	;
 
+avro_mod_options
+	: avro_mod_option avro_mod_options
+	|
+	;
+
+avro_mod_option
+	: KW_AVRO_STAMP '(' template_content ')' { avro_mod_dd_set_timestamp(last_driver, $3); }
+	|  { last_template_options = avro_mod_dd_get_template_options(last_driver); } template_option
+	;
+
+
 avro_mod_file
-        : string  { avro_mod_dd_set_destination_file(last_driver, $1);
-          free($1); }
+        : template_content  { avro_mod_dd_set_destination_file(last_driver, $1);}
          ;
 
 /* INCLUDE_RULES */
