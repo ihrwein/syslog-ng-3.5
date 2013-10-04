@@ -395,21 +395,21 @@ dnl ***************************************************************************
 AC_MSG_CHECKING(how to enable static linking for certain libraries)
 ldversion=`ld -V 2>&1 | head -n 1`
 if echo $ldversion | egrep "GNU|Solaris" > /dev/null; then
-        LD_START_STATIC="-Wl,-Bstatic"
-        LD_END_STATIC="-Wl,-Bdynamic"
-        AC_MSG_RESULT(GNU or Solaris)
+LD_START_STATIC="-Wl,-Bstatic"
+LD_END_STATIC="-Wl,-Bdynamic"
+AC_MSG_RESULT(GNU or Solaris)
 elif test $ostype = "HP-UX" > /dev/null; then
-        LD_START_STATIC="-Wl,-a,archive"
-        LD_END_STATIC="-Wl,-a,shared_archive"
-        AC_MSG_RESULT(HP-UX)
+LD_START_STATIC="-Wl,-a,archive"
+LD_END_STATIC="-Wl,-a,shared_archive"
+AC_MSG_RESULT(HP-UX)
 elif test "$ostype" = "AIX"; then
-        LD_START_STATIC="-Wl,-bstatic"
-        LD_END_STATIC="-Wl,-bdynamic"
-        AC_MSG_RESULT(AIX)
+LD_START_STATIC="-Wl,-bstatic"
+LD_END_STATIC="-Wl,-bdynamic"
+AC_MSG_RESULT(AIX)
 else
-        LD_START_STATIC=""
-        LD_END_STATIC=""
-        AC_MSG_RESULT([no clues, linking everything dynamically, please send appropriate ld arguments to syslog-ng@lists.balabit.hu])
+LD_START_STATIC=""
+LD_END_STATIC=""
+AC_MSG_RESULT([no clues, linking everything dynamically, please send appropriate ld arguments to syslog-ng@lists.balabit.hu])
 fi
 
 dnl ***************************************************************************
@@ -430,16 +430,16 @@ dnl Checks for typedefs, structures, and compiler characteristics.
 AC_STRUCT_TM
 
 AC_CACHE_CHECK(for SO_ACCEPTCONN, blb_cv_c_so_acceptconn,
-  [AC_EGREP_CPP(SO_ACCEPTCONN,
+[AC_EGREP_CPP(SO_ACCEPTCONN,
 [
 #include <sys/types.h>
 #include <socket.h>
 SO_ACCEPTCONN
 ],
-  blb_cv_c_so_acceptconn=no, blb_cv_c_so_acceptconn=yes)])
+blb_cv_c_so_acceptconn=no, blb_cv_c_so_acceptconn=yes)])
 
 if test "x$blb_cv_c_so_acceptconn" = "xyes"; then
-        AC_DEFINE(HAVE_SO_ACCEPTCONN, 1, [SO_ACCEPTCONN is present])
+AC_DEFINE(HAVE_SO_ACCEPTCONN, 1, [SO_ACCEPTCONN is present])
 fi
 
 AC_CHECK_MEMBER(struct tm.tm_gmtoff,AC_DEFINE(HAVE_STRUCT_TM_TM_GMTOFF,1,[Whether you have tm_gmtoff field in struct tm]),,[
@@ -450,54 +450,54 @@ AC_CHECK_MEMBER(struct tm.tm_gmtoff,AC_DEFINE(HAVE_STRUCT_TM_TM_GMTOFF,1,[Whethe
 #endif])
 
 AC_CACHE_CHECK(for I_CONSLOG, blb_cv_c_i_conslog,
-  [AC_EGREP_CPP(I_CONSLOG,
+[AC_EGREP_CPP(I_CONSLOG,
 [
 #include <sys/strlog.h>
 I_CONSLOG
 ],
-  blb_cv_c_i_conslog=no, blb_cv_c_i_conslog=yes)])
+blb_cv_c_i_conslog=no, blb_cv_c_i_conslog=yes)])
 
 old_CPPFLAGS=$CPPFLAGS
 CPPFLAGS=-D_GNU_SOURCE
 AC_CACHE_CHECK(for O_LARGEFILE, blb_cv_c_o_largefile,
-  [AC_EGREP_CPP(O_LARGEFILE,
+[AC_EGREP_CPP(O_LARGEFILE,
 [
 #include <fcntl.h>
 O_LARGEFILE
 ],
-  blb_cv_c_o_largefile=no, blb_cv_c_o_largefile=yes)])
+blb_cv_c_o_largefile=no, blb_cv_c_o_largefile=yes)])
 CPPFLAGS=$old_CPPFLAGS
 
 if test "x$blb_cv_c_o_largefile" = "xyes"; then
-        AC_DEFINE(HAVE_O_LARGEFILE, 1, [O_LARGEFILE is present])
+AC_DEFINE(HAVE_O_LARGEFILE, 1, [O_LARGEFILE is present])
 fi
 
 AC_CACHE_CHECK(for struct sockaddr_storage, blb_cv_c_struct_sockaddr_storage,
-  [AC_EGREP_HEADER([sockaddr_storage], sys/socket.h, blb_cv_c_struct_sockaddr_storage=yes,blb_cv_c_struct_sockaddr_storage=no)])
+[AC_EGREP_HEADER([sockaddr_storage], sys/socket.h, blb_cv_c_struct_sockaddr_storage=yes,blb_cv_c_struct_sockaddr_storage=no)])
 
 if test "$blb_cv_c_struct_sockaddr_storage" = "yes"; then
-	AC_DEFINE(HAVE_STRUCT_SOCKADDR_STORAGE,[1],[struct sockaddr_storage is present on your system])
+AC_DEFINE(HAVE_STRUCT_SOCKADDR_STORAGE,[1],[struct sockaddr_storage is present on your system])
 fi
 
 AC_CACHE_CHECK(for struct sockaddr_in6, blb_cv_c_struct_sockaddr_in6,
-  [AC_EGREP_HEADER([sockaddr_in6], netinet/in.h, blb_cv_c_struct_sockaddr_in6=yes,blb_cv_c_struct_sockaddr_in6=no)])
+[AC_EGREP_HEADER([sockaddr_in6], netinet/in.h, blb_cv_c_struct_sockaddr_in6=yes,blb_cv_c_struct_sockaddr_in6=no)])
 
 AC_CACHE_CHECK(for PR_SET_KEEPCAPS, blb_cv_keepcaps,
-  [AC_EGREP_CPP(PR_SET_KEEPCAPS,
+[AC_EGREP_CPP(PR_SET_KEEPCAPS,
 [
 #include <sys/prctl.h>
 
 PR_SET_KEEPCAPS
 ],
-  blb_cv_keepcaps=no,
-  blb_cv_keepcaps=yes)])
+blb_cv_keepcaps=no,
+blb_cv_keepcaps=yes)])
 
 if test "x$blb_cv_keepcaps" = "xyes"; then
-	AC_DEFINE(HAVE_PR_SET_KEEPCAPS, 1, [have PR_SET_KEEPCAPS])
+AC_DEFINE(HAVE_PR_SET_KEEPCAPS, 1, [have PR_SET_KEEPCAPS])
 fi
 
 if test "$ostype" != "Darwin" ; then
-	AC_DEFINE(HAVE_ENVIRON, [1], [Specifies whether the environ global variable exists])
+AC_DEFINE(HAVE_ENVIRON, [1], [Specifies whether the environ global variable exists])
 fi
 
 dnl ***************************************************************************
@@ -511,7 +511,7 @@ AC_CHECK_LIB(resolv, res_init, RESOLV_LIBS="-lresolv")
 
 
 if test "x$enable_linux_caps" = "xyes" -o "x$enable_linux_caps" = "xauto"; then
-	AC_CHECK_LIB(cap, cap_set_proc, LIBCAP_LIBS="-lcap")
+AC_CHECK_LIB(cap, cap_set_proc, LIBCAP_LIBS="-lcap")
 fi
 
 AC_CHECK_FUNCS(strdup strtol strtoll strtoimax inet_aton inet_ntoa getopt_long getaddrinfo getnameinfo getutent getutxent pread pwrite strcasestr memrchr localtime_r gmtime_r)
@@ -531,13 +531,13 @@ dnl ***************************************************************************
 
 old_LIBS=$LIBS
 AC_CACHE_CHECK(for TCP wrapper library,
-                blb_cv_c_lwrap,
+        blb_cv_c_lwrap,
 
 for libwrap in "-lwrap" "/usr/local/lib/libwrap.a"; do
-        LIBS="$old_LIBS $libwrap"
+LIBS="$old_LIBS $libwrap"
 
-        [AC_TRY_LINK(,
-        [
+[AC_TRY_LINK(,
+[
 }
 
 int allow_severity;
@@ -546,11 +546,11 @@ extern int hosts_access(void);
 
 int foo(void)
 {
-        hosts_access();
+hosts_access();
 ],
-        [blb_cv_c_lwrap=$libwrap
-        break],
-        blb_cv_c_lwrap="")
+[blb_cv_c_lwrap=$libwrap
+break],
+blb_cv_c_lwrap="")
 done
 
 ])
@@ -558,17 +558,17 @@ LIBS=$old_LIBS
 LIBWRAP_LIBS=$blb_cv_c_lwrap
 
 if test "x$enable_tcp_wrapper" = "xauto"; then
-	AC_MSG_CHECKING(whether to enable TCP wrapper support)
-        if test "x$ac_cv_header_tcpd_h" = "xyes" -a "x$blb_cv_c_lwrap" != "x"; then
-                enable_tcp_wrapper=yes
-                AC_MSG_RESULT(yes)
-        else
-                LIBWRAP_LIBS=""
-                AC_MSG_RESULT(no)
-                enable_tcp_wrapper=no
-        fi
-elif test "x$enable_tcp_wrapper" != "xyes"; then
+AC_MSG_CHECKING(whether to enable TCP wrapper support)
+if test "x$ac_cv_header_tcpd_h" = "xyes" -a "x$blb_cv_c_lwrap" != "x"; then
+        enable_tcp_wrapper=yes
+        AC_MSG_RESULT(yes)
+else
         LIBWRAP_LIBS=""
+        AC_MSG_RESULT(no)
+        enable_tcp_wrapper=no
+fi
+elif test "x$enable_tcp_wrapper" != "xyes"; then
+LIBWRAP_LIBS=""
 fi
 
 dnl ***************************************************************************
@@ -579,19 +579,19 @@ AC_CHECK_LIB(dl, dlsym, DL_LIBS="-ldl")
 PKG_CHECK_MODULES(LIBDBI, dbi >= $LIBDBI_MIN_VERSION, libdbi_pkgconfig_not_found="0", libdbi_pkgconfig_not_found="1")
 
 if test "$libdbi_pkgconfig_not_found" -eq 1; then
-	dnl if libdbi has no .pc file, try it without one
-	AC_CHECK_LIB(dbi, dbi_initialize, LIBDBI_LIBS="-ldbi"; LIBDBI_CFLAGS="-I/usr/include")
+dnl if libdbi has no .pc file, try it without one
+AC_CHECK_LIB(dbi, dbi_initialize, LIBDBI_LIBS="-ldbi"; LIBDBI_CFLAGS="-I/usr/include")
 fi
 
 if test "x$enable_sql" = "xauto"; then
-	AC_MSG_CHECKING(whether to enable SQL support)
-	if test "x$LIBDBI_LIBS" != "x"; then
-		enable_sql="yes"
-		AC_MSG_RESULT(yes)
-	else
-		enable_sql="no"
-		AC_MSG_RESULT(no)
-	fi
+AC_MSG_CHECKING(whether to enable SQL support)
+if test "x$LIBDBI_LIBS" != "x"; then
+enable_sql="yes"
+AC_MSG_RESULT(yes)
+else
+enable_sql="no"
+AC_MSG_RESULT(no)
+fi
 fi
 
 dnl ***************************************************************************
@@ -602,13 +602,13 @@ GLIB_ADDONS="gmodule-2.0 gthread-2.0"
 PKG_CHECK_MODULES(GLIB, glib-2.0 >= $GLIB_MIN_VERSION $GLIB_ADDONS,,)
 
 if test "$linking_mode" != "dynamic"; then
-	# strip out -ldl & -lrt as it cannot be linked statically
-	GLIB_LIBS=`echo $GLIB_LIBS | tr ' ' '\n' | egrep -v "^(-ldld?)|(-lrt)$" | tr '\n' ' '`
+# strip out -ldl & -lrt as it cannot be linked statically
+GLIB_LIBS=`echo $GLIB_LIBS | tr ' ' '\n' | egrep -v "^(-ldld?)|(-lrt)$" | tr '\n' ' '`
 
-	old_LIBS=$LIBS
-	LIBS="$LD_START_STATIC $GLIB_LIBS $LD_END_STATIC $BASE_LIBS"
-	AC_CHECK_FUNC(g_hash_table_new, blb_cv_static_glib=yes, blb_cv_static_glib=no)
-	LIBS=$old_LIBS
+old_LIBS=$LIBS
+LIBS="$LD_START_STATIC $GLIB_LIBS $LD_END_STATIC $BASE_LIBS"
+AC_CHECK_FUNC(g_hash_table_new, blb_cv_static_glib=yes, blb_cv_static_glib=no)
+LIBS=$old_LIBS
 fi
 
 old_CPPFLAGS=$CPPFLAGS
@@ -619,15 +619,15 @@ LDFLAGS="$LDFLAGS $GLIB_LIBS"
 AC_CHECK_FUNCS(g_mapped_file_unref)
 
 AC_CACHE_CHECK(sanity checking Glib headers,
-               blb_cv_glib_sane,
+       blb_cv_glib_sane,
 [AC_TRY_RUN([
 #include <glib.h>
 
 int main()
 {
-  if (sizeof(long) != GLIB_SIZEOF_LONG)
-    return 1;
-  return 0;
+if (sizeof(long) != GLIB_SIZEOF_LONG)
+return 1;
+return 0;
 }
 ],
 blb_cv_glib_sane=yes,
@@ -637,42 +637,42 @@ CPPFLAGS=$old_CPPFLAGS
 LDFLAGS=$old_LDFLAGS
 
 if test "x$blb_cv_glib_sane" = "xno"; then
-	AC_MSG_ERROR([Glib headers inconsistent with current compiler setting. You might be using 32 bit Glib with a 64 bit compiler, check PKG_CONFIG_PATH])
+AC_MSG_ERROR([Glib headers inconsistent with current compiler setting. You might be using 32 bit Glib with a 64 bit compiler, check PKG_CONFIG_PATH])
 fi
 
 if test "x$linking_mode" != "xdynamic" -a "x$blb_cv_static_glib" = "xno"; then
-	AC_MSG_ERROR([static GLib libraries not found (a file named libglib-2.0.a), either link GLib dynamically using the --enable-dynamic-linking or install a static GLib])
+AC_MSG_ERROR([static GLib libraries not found (a file named libglib-2.0.a), either link GLib dynamically using the --enable-dynamic-linking or install a static GLib])
 fi
 
 dnl ***************************************************************************
 dnl json headers/libraries
 dnl ***************************************************************************
 if test "x$enable_json" = "xyes" || test "x$enable_json" = "xauto"; then
-   _with_json="yes"
-   PKG_CHECK_MODULES(JSON_C, json >= $JSON_C_MIN_VERSION,, [JSON_C_LIBS=""; _with_json="no"])
+_with_json="yes"
+PKG_CHECK_MODULES(JSON_C, json >= $JSON_C_MIN_VERSION,, [JSON_C_LIBS=""; _with_json="no"])
 
-   if test "x$enable_json" = "xyes" && test "x$_with_json" = "xno"; then
-      AC_MSG_ERROR([Could not find json-c, and json support was explicitly enabled.])
-   fi
-   enable_json="$_with_json"
+if test "x$enable_json" = "xyes" && test "x$_with_json" = "xno"; then
+AC_MSG_ERROR([Could not find json-c, and json support was explicitly enabled.])
+fi
+enable_json="$_with_json"
 fi
 
 dnl ***************************************************************************
 dnl geoip headers/libraries
 dnl ***************************************************************************
 if test "x$enable_geoip" = "xyes" || test "x$enable_geoip" = "xauto"; then
-        if test "x$GEOIP_LIBS" != "x"; then
-                AC_MSG_CHECKING([for GEOIP])
-                AC_MSG_RESULT([yes (GEOIP_LIBS set, will use that.)])
-                with_geoip="yes"
-        else
-                PKG_CHECK_MODULES(GEOIP, geoip, with_geoip="yes", with_geoip="no")
-        fi
+if test "x$GEOIP_LIBS" != "x"; then
+        AC_MSG_CHECKING([for GEOIP])
+        AC_MSG_RESULT([yes (GEOIP_LIBS set, will use that.)])
+        with_geoip="yes"
+else
+        PKG_CHECK_MODULES(GEOIP, geoip, with_geoip="yes", with_geoip="no")
+fi
 
-        if test "x$with_geoip" = "xno" && test "x$enable_geoip" = "xyes"; then
-                AC_MSG_ERROR([Could not find libgeoip, and geoip support was explicitly enabled.])
-        fi
-        enable_geoip="$with_geoip"
+if test "x$with_geoip" = "xno" && test "x$enable_geoip" = "xyes"; then
+        AC_MSG_ERROR([Could not find libgeoip, and geoip support was explicitly enabled.])
+fi
+enable_geoip="$with_geoip"
 fi
 
 dnl ***************************************************************************
@@ -680,41 +680,41 @@ dnl pcre headers/libraries
 dnl ***************************************************************************
 
 if test "x$enable_pcre" = "xyes" -o "x$enable_pcre" = "xauto"; then
-	if test "x$linking_mode" = "xmixed"; then
+if test "x$linking_mode" = "xmixed"; then
 
-		# check if we have a pcre bundled in glib. In case glib is
-		# dynamic it doesn't matter as glib doesn't export those
-		# symbols.  But in case glib is static, linking it through
-		# glib and through libpcre would clash.
-		old_LIBS="$LIBS"
-		LIBS="$LD_START_STATIC $GLIB_LIBS $LD_END_STATIC $LIBS"
-		AC_CHECK_FUNC(pcre_compile2, AC_MSG_ERROR([You cannot use a GLib embedded PCRE in mixed linking mode]))
-		LIBS="$old_LIBS"
-	fi
+# check if we have a pcre bundled in glib. In case glib is
+# dynamic it doesn't matter as glib doesn't export those
+# symbols.  But in case glib is static, linking it through
+# glib and through libpcre would clash.
+old_LIBS="$LIBS"
+LIBS="$LD_START_STATIC $GLIB_LIBS $LD_END_STATIC $LIBS"
+AC_CHECK_FUNC(pcre_compile2, AC_MSG_ERROR([You cannot use a GLib embedded PCRE in mixed linking mode]))
+LIBS="$old_LIBS"
+fi
 
-	PKG_CHECK_MODULES(PCRE, libpcre >= $PCRE_MIN_VERSION,, PCRE_LIBS="")
-	if test -z "$PCRE_LIBS"; then
-		if test "x$enable_pcre" = "xyes"; then
-			AC_MSG_ERROR(Cannot find pcre version >= $PCRE_MIN_VERSION.)
-		else
-			AC_MSG_WARN(Cannot find pcre version >= $PCRE_MIN_VERSION. pcre support disabled.)
-		fi
-	fi
+PKG_CHECK_MODULES(PCRE, libpcre >= $PCRE_MIN_VERSION,, PCRE_LIBS="")
+if test -z "$PCRE_LIBS"; then
+if test "x$enable_pcre" = "xyes"; then
+    AC_MSG_ERROR(Cannot find pcre version >= $PCRE_MIN_VERSION.)
+else
+    AC_MSG_WARN(Cannot find pcre version >= $PCRE_MIN_VERSION. pcre support disabled.)
+fi
+fi
 fi
 
 if test -z "$PCRE_LIBS"; then
-	PCRE_LIBS=""
-	PCRE_CFLAGS=""
+PCRE_LIBS=""
+PCRE_CFLAGS=""
 fi
 
 if test "x$enable_pcre" = "xauto"; then
-        AC_MSG_CHECKING(whether to enable PCRE support)
-        if test "x$PCRE_LIBS" != "x"; then
-                enable_pcre="yes"
-        else
-                enable_pcre="no"
-        fi
-        AC_MSG_RESULT([$enable_pcre])
+AC_MSG_CHECKING(whether to enable PCRE support)
+if test "x$PCRE_LIBS" != "x"; then
+        enable_pcre="yes"
+else
+        enable_pcre="no"
+fi
+AC_MSG_RESULT([$enable_pcre])
 fi
 
 dnl ***************************************************************************
@@ -728,28 +728,28 @@ dnl check OpenSSL static linking
 PKG_CHECK_MODULES(OPENSSL, openssl >= $OPENSSL_MIN_VERSION,, OPENSSL_LIBS="")
 
 if test -n "$OPENSSL_LIBS" -a "$linking_mode" != "dynamic"; then
-        dnl required for openssl, but only when linking statically
-        AC_CHECK_LIB(z, inflate, ZLIB_LIBS="-lz")
+dnl required for openssl, but only when linking statically
+AC_CHECK_LIB(z, inflate, ZLIB_LIBS="-lz")
 
-	dnl Remove -ldl as it cannot be linked statically on some platforms, it'll be present in DL_LIBS
-	OPENSSL_LIBS=`echo $OPENSSL_LIBS | tr ' ' '\n' | egrep -v "^-ldld?$" | tr '\n' ' '`
+dnl Remove -ldl as it cannot be linked statically on some platforms, it'll be present in DL_LIBS
+OPENSSL_LIBS=`echo $OPENSSL_LIBS | tr ' ' '\n' | egrep -v "^-ldld?$" | tr '\n' ' '`
 
-	old_LIBS=$LIBS
-	LIBS="$LD_START_STATIC $OPENSSL_LIBS $ZLIB_LIBS $LD_END_STATIC $DL_LIBS"
-	AC_CHECK_FUNC(SSL_library_init, blb_cv_static_openssl=yes, blb_cv_static_openssl=no)
-	LIBS=$old_LIBS
+old_LIBS=$LIBS
+LIBS="$LD_START_STATIC $OPENSSL_LIBS $ZLIB_LIBS $LD_END_STATIC $DL_LIBS"
+AC_CHECK_FUNC(SSL_library_init, blb_cv_static_openssl=yes, blb_cv_static_openssl=no)
+LIBS=$old_LIBS
 fi
 
 if test "x$OPENSSL_LIBS" != "x"; then
-        if test "x$enable_ssl" = "xauto"; then
-	        enable_ssl="yes"
-        fi
+if test "x$enable_ssl" = "xauto"; then
+    enable_ssl="yes"
+fi
 else
-        enable_ssl="no"
+enable_ssl="no"
 fi
 
 if test "x$enable_ssl" = "xno"; then
-	OPENSSL_LIBS=""
+OPENSSL_LIBS=""
 fi
 
 dnl
@@ -759,7 +759,7 @@ dnl
 dnl The static check remains though, because the core may need openssl in the
 dnl future, in which case it becomes relevant again.
 dnl
-
+0
 dnl if test "x$linking_mode" != "xdynamic" -a "x$blb_cv_static_openssl" = "xno"; then
 dnl	AC_MSG_ERROR([static OpenSSL libraries not found (libssl.a, libcrypto.a and their external dependencies like libz.a), either link OpenSSL statically using the --enable-dynamic-linking, or install a static OpenSSL])
 dnl fi
@@ -769,36 +769,36 @@ dnl libnet headers/libraries
 dnl ***************************************************************************
 AC_MSG_CHECKING(for LIBNET)
 if test "x$with_libnet" = "x"; then
-        LIBNET_CONFIG="`which libnet-config`"
+LIBNET_CONFIG="`which libnet-config`"
 else
-        LIBNET_CONFIG="$with_libnet/libnet-config"
+LIBNET_CONFIG="$with_libnet/libnet-config"
 fi
 
 if test -n "$LIBNET_CONFIG" -a -x "$LIBNET_CONFIG"; then
-        LIBNET_CFLAGS="`$LIBNET_CONFIG --defines`"
-        LIBNET_LIBS="`$LIBNET_CONFIG --libs`"
-        AC_MSG_RESULT(yes)
+LIBNET_CFLAGS="`$LIBNET_CONFIG --defines`"
+LIBNET_LIBS="`$LIBNET_CONFIG --libs`"
+AC_MSG_RESULT(yes)
 else
-        LIBNET_LIBS=
-        AC_MSG_RESULT(no)
+LIBNET_LIBS=
+AC_MSG_RESULT(no)
 fi
 
 
 if test "x$enable_spoof_source" = "xauto"; then
-	AC_MSG_CHECKING(whether to enable spoof source support)
-        if test "x$LIBNET_LIBS" != "x"; then
-                enable_spoof_source=yes
-                AC_MSG_RESULT(yes)
-	else
-		enable_spoof_source=no
-                LIBNET_LIBS=
-		LIBNET_CFLAGS=
-		AC_MSG_RESULT(no)
-        fi
+AC_MSG_CHECKING(whether to enable spoof source support)
+if test "x$LIBNET_LIBS" != "x"; then
+        enable_spoof_source=yes
+        AC_MSG_RESULT(yes)
+else
+enable_spoof_source=no
+        LIBNET_LIBS=
+LIBNET_CFLAGS=
+AC_MSG_RESULT(no)
+fi
 elif test "x$enable_spoof_source" != "xyes"; then
-	LIBNET_CFLAGS=""
-	LIBNET_LIBS=""
-	enable_spoof_source=no
+LIBNET_CFLAGS=""
+LIBNET_LIBS=""
+enable_spoof_source=no
 fi
 
 dnl ***************************************************************************
@@ -806,30 +806,30 @@ dnl ivykis headers/libraries
 dnl ***************************************************************************
 
 if test "x$with_ivykis" = "xinternal"; then
-	if test -f "$srcdir/lib/ivykis/src/iv_main_posix.c"; then
-		AC_CONFIG_SUBDIRS([lib/ivykis])
+if test -f "$srcdir/lib/ivykis/src/iv_main_posix.c"; then
+AC_CONFIG_SUBDIRS([lib/ivykis])
 
-		# these can only be used in lib as it assumes
-		# the current directory just one below ivykis
+# these can only be used in lib as it assumes
+# the current directory just one below ivykis
 
-		IVYKIS_LIBS="-Wl,--whole-archive -L\$(top_builddir)/lib/ivykis/src -livykis  -Wl,--no-whole-archive"
-		IVYKIS_CFLAGS="-I\$(top_srcdir)/lib/ivykis/src/include -I\$(top_builddir)/lib/ivykis/src/include"
-		IVYKIS_SUBDIRS=lib/ivykis
+IVYKIS_LIBS="-Wl,--whole-archive -L\$(top_builddir)/lib/ivykis/src -livykis  -Wl,--no-whole-archive"
+IVYKIS_CFLAGS="-I\$(top_srcdir)/lib/ivykis/src/include -I\$(top_builddir)/lib/ivykis/src/include"
+IVYKIS_SUBDIRS=lib/ivykis
 
-		# LIBS to use when libtool is not applicable (when linking the main syslog-ng executable in mixed linking mode)
-		IVYKIS_NO_LIBTOOL_LIBS="-Wl,--whole-archive -L\$(top_builddir)/lib/ivykis/src/.libs -livykis -Wl,--no-whole-archive"
-	else
-		AC_MSG_ERROR([Internal ivykis sources not found in lib/ivykis. This is a hard dependency, unable to build syslog-ng without them.])
-	fi
+# LIBS to use when libtool is not applicable (when linking the main syslog-ng executable in mixed linking mode)
+IVYKIS_NO_LIBTOOL_LIBS="-Wl,--whole-archive -L\$(top_builddir)/lib/ivykis/src/.libs -livykis -Wl,--no-whole-archive"
 else
-	with_ivykis="system"
-	PKG_CHECK_MODULES(IVYKIS, ivykis >= $IVYKIS_MIN_VERSION,,)
+AC_MSG_ERROR([Internal ivykis sources not found in lib/ivykis. This is a hard dependency, unable to build syslog-ng without them.])
+fi
+else
+with_ivykis="system"
+PKG_CHECK_MODULES(IVYKIS, ivykis >= $IVYKIS_MIN_VERSION,,)
 
-	# in case we're using a system installed ivykis, we can link against
-	# it even without libtool and without extra linker arguments (as
-	# we're linking dynamically)
+# in case we're using a system installed ivykis, we can link against
+# it even without libtool and without extra linker arguments (as
+# we're linking dynamically)
 
-	IVYKIS_NO_LIBTOOL_LIBS="$IVYKIS_LIBS"
+IVYKIS_NO_LIBTOOL_LIBS="$IVYKIS_LIBS"
 fi
 
 dnl ***************************************************************************
@@ -837,107 +837,140 @@ dnl libmongo headers/libraries
 dnl ***************************************************************************
 
 if test "x$with_libmongo_client" = "xinternal"; then
-	if test -f "$srcdir/modules/afmongodb/libmongo-client/src/mongo.h"; then
-		AC_CONFIG_SUBDIRS([modules/afmongodb/libmongo-client])
+if test -f "$srcdir/modules/afmongodb/libmongo-client/src/mongo.h"; then
+AC_CONFIG_SUBDIRS([modules/afmongodb/libmongo-client])
 
-		# these can only be used in modules/mongodb as it assumes
-		# the current directory just one below libmongo-client
+# these can only be used in modules/mongodb as it assumes
+# the current directory just one below libmongo-client
 
-		LIBMONGO_LIBS="-L\$(top_builddir)/modules/afmongodb/libmongo-client/src -lmongo-client $OPENSSL_LIBS"
-		LIBMONGO_CFLAGS="-I\$(top_srcdir)/modules/afmongodb/libmongo-client/src"
-		LIBMONGO_SUBDIRS="modules/afmongodb/libmongo-client"
-	else
-		AC_MSG_WARN([Internal libmongo-client sources not found in modules/afmongodb/libmongo-client])
-		with_libmongo_client="no"
-	fi
+LIBMONGO_LIBS="-L\$(top_builddir)/modules/afmongodb/libmongo-client/src -lmongo-client $OPENSSL_LIBS"
+LIBMONGO_CFLAGS="-I\$(top_srcdir)/modules/afmongodb/libmongo-client/src"
+LIBMONGO_SUBDIRS="modules/afmongodb/libmongo-client"
+else
+AC_MSG_WARN([Internal libmongo-client sources not found in modules/afmongodb/libmongo-client])
+with_libmongo_client="no"
+fi
 elif test "x$with_libmongo_client" = "xsystem"; then
-	PKG_CHECK_MODULES(LIBMONGO, libmongo-client >= $LMC_MIN_VERSION,,with_libmongo_client="no")
+PKG_CHECK_MODULES(LIBMONGO, libmongo-client >= $LMC_MIN_VERSION,,with_libmongo_client="no")
 fi
 
 if test "x$with_libmongo_client" = "xno"; then
-   if test "x$enable_mongodb" = "xyes"; then
-      AC_MSG_ERROR([Could not find libmongo-client, and MongoDB support was explicitly enabled.])
-   fi
-   enable_mongodb="no"
+if test "x$enable_mongodb" = "xyes"; then
+AC_MSG_ERROR([Could not find libmongo-client, and MongoDB support was explicitly enabled.])
+fi
+enable_mongodb="no"
 fi
 
 dnl ***************************************************************************
 dnl libesmtp headers/libraries
 dnl ***************************************************************************
 if test "x$enable_smtp" != "xno" && test "x$with_libesmtp" != "no"; then
-	libesmtp="yes"
-	if test "x$with_libesmtp" != "yes" && test "x$with_libesmtp" != "x"; then
-		CPPFLAGS_SAVE="$CPPFLAGS"
-		LDFLAGS_SAVE="$LDFLAGS"
-		CPPFLAGS="$CPPFLAGS -I$with_libesmtp/include"
-		LDFLAGS="$LDFLAGS -L$with_libesmtp/lib"
-		AC_CHECK_HEADER(libesmtp.h, [LIBESMTP_CFLAGS="-I$with_libesmtp/include"
-					     LIBESMTP_LIBS="-L$with_libesmtp/lib -lesmtp"], [libesmtp=no])
-		CPPFLAGS="$CPPFLAGS_SAVE"
-		LDFLAGS="$LDFLAGS_SAVE"
-	else
-		AC_MSG_CHECKING(for libESMTP)
-		if libesmtp-config --version >/dev/null 2>&1; then
-			AC_MSG_RESULT(yes)
-			LIBESMTP_CFLAGS="`libesmtp-config --cflags`"
-			LIBESMTP_LIBS="`libesmtp-config --libs`"
-		else
-			AC_MSG_RESULT(no)
-			libesmtp=no
-		fi
-	fi
-	if test "x$enable_smtp" = "xyes" && test "x$libesmtp" = "xno"; then
-		AC_MSG_ERROR(libESMTP not found)
-	fi
-	enable_smtp=$libesmtp
+libesmtp="yes"
+if test "x$with_libesmtp" != "yes" && test "x$with_libesmtp" != "x"; then
+CPPFLAGS_SAVE="$CPPFLAGS"
+LDFLAGS_SAVE="$LDFLAGS"
+CPPFLAGS="$CPPFLAGS -I$with_libesmtp/include"
+LDFLAGS="$LDFLAGS -L$with_libesmtp/lib"
+AC_CHECK_HEADER(libesmtp.h, [LIBESMTP_CFLAGS="-I$with_libesmtp/include"
+                 LIBESMTP_LIBS="-L$with_libesmtp/lib -lesmtp"], [libesmtp=no])
+CPPFLAGS="$CPPFLAGS_SAVE"
+LDFLAGS="$LDFLAGS_SAVE"
+else
+AC_MSG_CHECKING(for libESMTP)
+if libesmtp-config --version >/dev/null 2>&1; then
+    AC_MSG_RESULT(yes)
+    LIBESMTP_CFLAGS="`libesmtp-config --cflags`"
+    LIBESMTP_LIBS="`libesmtp-config --libs`"
+else
+    AC_MSG_RESULT(no)
+    libesmtp=no
+fi
+fi
+if test "x$enable_smtp" = "xyes" && test "x$libesmtp" = "xno"; then
+AC_MSG_ERROR(libESMTP not found)
+fi
+enable_smtp=$libesmtp
 fi
 
- dnl ***************************************************************************
+dnl ***************************************************************************
 dnl libhiredis headers/libraries
 dnl ***************************************************************************
 if test "x$enable_redis" != "xno" && test "x$with_redis" != "no"; then
+hiredis="yes"
+if test "x$with_libhiredis" != "yes" && test "x$with_libhiredis" != "x"; then
+       CFLAGS_SAVE="$CFLAGS"
+       LDFLAGS_SAVE="$LDFLAGS"
+       CFLAGS="$CFLAGS -I$with_libhiredis/include"
+       LDFLAGS="$LDFLAGS -L$with_libhiredis/lib"
+       AC_CHECK_HEADER(hiredis.h, [HIREDIS_CFLAGS="-I$with_libhiredis/include"
+                                    HIREDIS_LIBS="-L$with_libhiredis/lib -lhiredis"], [hiredis=no])
+       CFLAGS="$CFLAGS_SAVE"
+       LDFLAGS="$LDFLAGS_SAVE"
+else
        hiredis="yes"
-       if test "x$with_libhiredis" != "yes" && test "x$with_libhiredis" != "x"; then
-               CFLAGS_SAVE="$CFLAGS"
-               LDFLAGS_SAVE="$LDFLAGS"
-               CFLAGS="$CFLAGS -I$with_libhiredis/include"
-               LDFLAGS="$LDFLAGS -L$with_libhiredis/lib"
-               AC_CHECK_HEADER(hiredis.h, [HIREDIS_CFLAGS="-I$with_libhiredis/include"
-                                            HIREDIS_LIBS="-L$with_libhiredis/lib -lhiredis"], [hiredis=no])
-               CFLAGS="$CFLAGS_SAVE"
-               LDFLAGS="$LDFLAGS_SAVE"
-       else
-               hiredis="yes"
-               PKG_CHECK_MODULES(HIREDIS, hiredis, ,
-                                 [PKG_CHECK_MODULES(HIREDIS, libhiredis,, [hiredis=no])])
-       fi
+       PKG_CHECK_MODULES(HIREDIS, hiredis, ,
+                         [PKG_CHECK_MODULES(HIREDIS, libhiredis,, [hiredis=no])])
+fi
 
-       if test "x$enable_redis" = "xyes" && test "x$hiredis" = "xno"; then
-               AC_MSG_ERROR(libHIREDIS not found)
-       fi
+if test "x$enable_redis" = "xyes" && test "x$hiredis" = "xno"; then
+       AC_MSG_ERROR(libHIREDIS not found)
+fi
 
-       enable_redis=$hiredis
+enable_redis=$hiredis
 fi
 
 dnl ***************************************************************************
 dnl libavro-c headers/libraries
 dnl ***************************************************************************
 if test "x$enable_avro" != "xno" && test "x$with_libavro_c" != "no"; then
-	libavro_c="yes"
-	if test "x$with_libavro_c" != "yes" && test "x$with_libavro_c" != "x"; then
-		CPPFLAGS_SAVE="$CPPFLAGS"
-		LDFLAGS_SAVE="$LDFLAGS"
-		CPPFLAGS="$CPPFLAGS -I$with_libavro_c/include"
-		LDFLAGS="$LDFLAGS -L$with_libavro_c/lib"
-		AC_CHECK_HEADER(avro.h, [LIBAVRO_C_CFLAGS="-I$with_libavro_c/include"
-					     LIBAVRO_C_LIBS="-L$with_libavro_c/lib -lavro -lz -llzma"], [libavro_c=no])
-		CPPFLAGS="$CPPFLAGS_SAVE"
-		LDFLAGS="$LDFLAGS_SAVE"
-	else
-		AC_MSG_CHECKING(for Avro-c)
-		if avro --version >/dev/null 2>&1; then
-			AC_MSG_RESULT(yes)
-			LIBAVRO_C_CFLAGS="`pkg-config --cflags avro-c`"
+libavro_c="yes"
+if test "x$with_libavro_c" != "yes" && test "x$with_libavro_c" != "x"; then
+CPPFLAGS_SAVE="$CPPFLAGS"
+LDFLAGS_SAVE="$LDFLAGS"
+CPPFLAGS="$CPPFLAGS -I$with_libavro_c/include"
+LDFLAGS="$LDFLAGS -L$with_libavro_c/lib"
+AC_CHECK_HEADER(avro.h, [LIBAVRO_C_CFLAGS="-I$with_libavro_c/include"
+                 LIBAVRO_C_LIBS="-L$with_libavro_c/lib -lavro -lz -llzma"], [libavro_c=no])
+CPPFLAGS="$CPPFLAGS_SAVE"
+LDFLAGS="$LDFLAGS_SAVE"
+else
+AC_MSG_CHECKING(for Avro-c)
+if avro --version >/dev/null 2>&1; then
+    AC_MSG_RESULT(yes)
+    LIBAVRO_C_CFLAGS="`pkg-config --cflags avro-c`"
+    LIBAVRO_C_LIBS="`pkg-config --libs avro-c`"
+else
+    AC_MSG_RESULT(no)
+    libavro_c=no
+fi
+fi
+if test "x$enable_avro" = "xyes" && test "x$libavro_c" = "xno"; then
+AC_MSG_ERROR(libavro_c not found)
+fi
+enable_avro=$libavro_c
+fi
+AC_SUBST(LIBAVRO_C_CFLAGS)
+AC_SUBST(LIBAVRO_C_LIBS)
+
+dnl ***************************************************************************
+dnl libavro-c headers/libraries
+dnl ***************************************************************************
+if test "x$enable_avro" != "xno" && test "x$with_libavro_c" != "no"; then
+libavro_c="yes"
+if test "x$with_libavro_c" != "yes" && test "x$with_libavro_c" != "x"; then
+CPPFLAGS_SAVE="$CPPFLAGS"
+LDFLAGS_SAVE="$LDFLAGS"
+CPPFLAGS="$CPPFLAGS -I$with_libavro_c/include"
+LDFLAGS="$LDFLAGS -L$with_libavro_c/lib"
+AC_CHECK_HEADER(avro.h, [LIBAVRO_C_CFLAGS="-I$with_libavro_c/include"
+                 LIBAVRO_C_LIBS="-L$with_libavro_c/lib -lavro -lz -llzma"], [libavro_c=no])
+CPPFLAGS="$CPPFLAGS_SAVE"
+LDFLAGS="$LDFLAGS_SAVE"
+else
+AC_MSG_CHECKING(for Avro-c)
+if avro --version >/dev/null 2>&1; then
+    AC_MSG_RESULT(yes)
+    LIBAVRO_C_CFLAGS="`pkg-config --cflags avro-c`"
 			LIBAVRO_C_LIBS="`pkg-config --libs avro-c`"
 		else
 			AC_MSG_RESULT(no)

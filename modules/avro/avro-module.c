@@ -85,7 +85,6 @@ assert_zero(AvroDriver *self, gint result)
   if (result != 0)
     msg_error("Avro error", evt_tag_str("error", avro_strerror()),
               evt_tag_str("driver", self->super.super.super.id), NULL);
-
   return result;
 }
 
@@ -215,7 +214,6 @@ avro_mod_dd_datafile_close(AvroDriver *self)
             evt_tag_str("driver", self->super.super.super.id),
             evt_tag_str("filename", self->current_file_name->str),
             NULL);
-
   return error;
 }
 
