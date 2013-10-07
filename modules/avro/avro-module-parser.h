@@ -26,7 +26,7 @@
 
 #include "cfg-parser.h"
 #include "cfg-lexer.h"
-#include "avro-module.h" 
+#include "avro-module.h"
 
 extern CfgParser avro_mod_parser;
 

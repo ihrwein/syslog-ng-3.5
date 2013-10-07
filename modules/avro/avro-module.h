@@ -36,7 +36,7 @@
 
 #define SDATA_PREFIX  ".SDATA."
 
-LogDriver *avro_mod_dd_new(void);
+LogDriver *avro_mod_dd_new(GlobalConfig *cfg);
 
 void avro_mod_dd_set_destination_file(LogDriver *d, LogTemplate *filename);
 void avro_mod_dd_set_timestamp(LogDriver *d, LogTemplate *stamp);

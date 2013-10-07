@@ -31,7 +31,8 @@
 #include "logqueue.h"
 #include "plugin-types.h"
 #include "logthrdestdrv.h"
-
+#include "value-pairs.h"
+#include "vptransform.h"
 #include <signal.h>
 #include <assert.h>
 
@@ -48,6 +49,8 @@ typedef struct
   LogTemplate* timestamp;
   GString* current_timestamp;
   gint32 seq_num;
+
+  ValuePairs *vp;
 } AvroDriver;
 
 /*
@@ -70,6 +73,16 @@ avro_mod_dd_set_timestamp(LogDriver *d, LogTemplate *stamp)
 
   log_template_unref(self->timestamp);
   self->timestamp = log_template_ref(stamp);
+}
+
+void
+avro_mod_dd_set_value_pairs(LogDriver *d, ValuePairs *vp)
+{
+  AvroDriver *self = (AvroDriver *)d;
+
+  if (self->vp)
+    value_pairs_free(self->vp);
+  self->vp = vp;
 }
 
 LogTemplateOptions *
@@ -332,34 +345,6 @@ avro_mod_dd_set_msgid(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg
   return avro_mod_dd_set_string(self, parent, logmsg, "MSGID", "MSGID");
 }
 
-static const gchar*
-remove_sdata_prefix(const gchar* name)
-{
-  return name + strlen(SDATA_PREFIX);
-}
-
-static gboolean
-split_sdata_parts(const gchar* sdata, gchar** id, gchar** param)
-{
-  gchar* dot_pos;
-
-  const gchar* sdata_without_sdata_prefix = remove_sdata_prefix(sdata);
-  dot_pos = strchr(sdata_without_sdata_prefix, '.');
-
-  if (dot_pos == NULL)
-    {
-      msg_error("Avro destiantion driver error",
-                evt_tag_str("error", "Unable to find a separator dot in sdata"),
-                NULL);
-      id = param = NULL;
-      return FALSE;
-    }
-  *id = g_strndup(sdata_without_sdata_prefix, dot_pos - sdata_without_sdata_prefix);
-  *param = g_strdup(dot_pos + 1);
-
-  return TRUE;
-}
-
 typedef struct
 {
   AvroDriver *driver;
@@ -368,25 +353,40 @@ typedef struct
 } _NVFunctionUserData;
 
 static gboolean
-append_sdata(NVHandle handle, const gchar *name, const gchar *value, gssize value_len, gpointer user_data)
+vp_append_sdata_start(const gchar *name, const gchar *prefix,
+                      gpointer *prefix_data, const gchar *prev,
+                      gpointer *prev_data, gpointer user_data)
 {
-  gchar* id = NULL;
-  gchar* param = NULL;
+  return FALSE;
+}
+
+static gboolean
+vp_append_sdata_end(const gchar *name, const gchar *prefix,
+                      gpointer *prefix_data, const gchar *prev,
+                      gpointer *prev_data, gpointer user_data)
+{
+  return FALSE;
+}
+
+static gboolean
+vp_append_sdata_value(const gchar *name, const gchar *prefix,
+                      TypeHint type, const gchar *value,
+                      gpointer *prefix_data, gpointer user_data)
+{
+  gchar *id = NULL;
   avro_value_t sd_element;
   avro_value_t param_value;
   _NVFunctionUserData* priv_data = (_NVFunctionUserData*) user_data;
   AvroDriver* self = priv_data->driver;
 
-  if (log_msg_is_handle_sdata(handle))
+  if (prefix && g_str_has_prefix(prefix, "_SDATA"))
     {
-      split_sdata_parts(name, &id, &param);
+      id = g_strdup(prefix + sizeof("_SDATA"));
       assert_zero(self, avro_value_add(priv_data->parent, id, &sd_element, NULL, NULL));
-      assert_zero(self, avro_value_add(&sd_element, param, &param_value, NULL, NULL));
+      assert_zero(self, avro_value_add(&sd_element, name, &param_value, NULL, NULL));
       assert_zero(self, avro_value_set_string(&param_value, value));
     }
-
   g_free(id);
-  g_free(param);
 
   return FALSE;
 }
@@ -412,7 +412,16 @@ avro_mod_dd_set_sdata(AvroDriver *self, avro_value_t *parent, LogMessage *logmsg
       priv_data.driver = self;
       priv_data.parent = &branch;
       priv_data.logmsg = logmsg;
-      log_msg_nv_table_foreach(logmsg->payload, append_sdata, &priv_data);
+
+      value_pairs_walk(self->vp,
+                       vp_append_sdata_start,
+                       vp_append_sdata_value,
+                       vp_append_sdata_end,
+                       logmsg,
+                       self->seq_num,
+                       &self->template_options,
+                       &priv_data);
+
     }
 
   return error;
@@ -547,11 +556,18 @@ avro_mod_dd_init(LogPipe *s)
 {
   AvroDriver *self = (AvroDriver *)s;
   GlobalConfig *cfg = log_pipe_get_config(s);
+  ValuePairsTransformSet *vpts;
 
   if (!log_threaded_dest_driver_init_method(s))
     return FALSE;
 
   log_template_options_init(&self->template_options, cfg);
+
+  /* Always replace a leading dot with an underscore. */
+  vpts = value_pairs_transform_set_new(".*");
+  value_pairs_transform_set_add_func(vpts, value_pairs_new_transform_replace_prefix(".", "_"));
+  value_pairs_add_transforms(self->vp, vpts);
+
   self->current_file_name = g_string_sized_new(128);
   self->active_file_name = g_string_sized_new(128);
 
@@ -578,7 +594,6 @@ avro_mod_dd_deinit(LogPipe *s)
   g_string_free(self->active_file_name, TRUE);
   g_string_free(self->current_file_name, TRUE);
   g_string_free(self->current_timestamp, TRUE);
-  //log_template_unref(self->timestamp);
 
   return log_threaded_dest_driver_deinit_method(s);
 }
@@ -587,14 +602,27 @@ avro_mod_dd_deinit(LogPipe *s)
  * Plugin glue.
  */
 
+static void
+avro_mod_dd_free(LogPipe *d)
+{
+  AvroDriver *self = (AvroDriver*) d;
+
+  log_template_unref(self->timestamp);
+  if (self->vp)
+    value_pairs_free(self->vp);
+
+  log_threaded_dest_driver_free(d);
+}
+
 LogDriver *
-avro_mod_dd_new(void)
+avro_mod_dd_new(GlobalConfig *cfg)
 {
   AvroDriver *self = g_new0(AvroDriver, 1);
 
   log_threaded_dest_driver_init_instance(&self->super);
 
   self->super.super.super.super.init = avro_mod_dd_init;
+  self->super.super.super.super.free_fn = avro_mod_dd_free;
   self->super.super.super.super.deinit = avro_mod_dd_deinit;
 
   self->super.worker.insert = avro_mod_dd_worker_insert;
@@ -604,6 +632,8 @@ avro_mod_dd_new(void)
 
   init_sequence_number(&self->seq_num);
   log_template_options_defaults(&self->template_options);
+  avro_mod_dd_set_value_pairs(&self->super.super.super,
+                              value_pairs_new_default(cfg));
 
   return (LogDriver *)self;
 }

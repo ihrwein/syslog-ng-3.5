@@ -32,6 +32,7 @@
 #include "cfg-grammar.h"
 #include "avro-module-grammar.h"
 #include "plugin.h"
+#include "vptransform.h"
 
 }
 
@@ -51,7 +52,7 @@
 start
         : LL_CONTEXT_DESTINATION KW_AVRO
           {
-            last_driver = *instance = avro_mod_dd_new();
+            last_driver = *instance = avro_mod_dd_new(configuration);
           }
           '(' avro_mod_file avro_mod_options ')'         { YYACCEPT; }
 	;
