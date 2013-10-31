@@ -4,60 +4,7 @@
 	"namespace" : "hu.balabit",
 	"fields" : 
 	[
-		{ 
-    	"name" : "PRIORITY",
-      "default": "null",
-    	"type" : 
-      [
-        "null",
-        "int"
-      ]
-    },
-    {
-    	"name" : "TIMESTAMP",
-        "default": "null",
-        "type" :
-    	[
-        "null",
-        "string"
-    	]
-    },
-    {
-    	"name" : "HOSTNAME",
-        "default": "null",
-        "type" :
-    	[
-        "null",
-        "string"
-    	]
-    },
-    {
-    	"name" : "APP_NAME",
-        "default": "null",
-    	"type" :
-    	[
-        "null",
-        "string"
-    	]
-    },
-    {
-    	"name" : "PROCID",
-      "default": "null",
-    	"type" :
-    	[
-        "null",
-        "string"
-    	]
-    },
-    {
-    	"name" : "MSGID",
-      "default": "null",
-    	"type" :
-    	[
-	      "null",
-	      "string"
-    	]
-    },
+    
 		{
 			"name" : "STRUCTURED_DATA",
       "type" :
@@ -73,15 +20,6 @@
 	      	}
       	}
       ]
-    },
-    {
-	    "name" : "MSG",
-	    "default" : "null",
-	    "type" :
-	    [
-        "null",
-        "string"
-	    ]
     }
 	]
 
