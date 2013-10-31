@@ -38,7 +38,7 @@
 #include <signal.h>
 #include <assert.h>
 
-#define DEFAULT_SDATA_NAME "_DEFAULT"
+gchar *DEFAULT_SDATA_ID = NULL;
 
 typedef struct
 {
@@ -254,11 +254,9 @@ avro_mod_dd_set_stamp(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg
 
   if (self->current_timestamp->len > 0)
     {
-      id = g_strdup(DEFAULT_SDATA_NAME);
-      error |= assert_zero(self, avro_value_add(parent, id, &sd_element, NULL, NULL));
+      error |= assert_zero(self, avro_value_add(parent, DEFAULT_SDATA_ID, &sd_element, NULL, NULL));
       error |= assert_zero(self, avro_value_add(&sd_element, "TIMESTAMP", &param_value, NULL, NULL));
       error |= assert_zero(self, avro_value_set_string(&param_value, self->current_timestamp->str));
-      g_free(id);
     }
 
   return error;
@@ -307,17 +305,16 @@ avro_mod_vp_obj_value(const gchar *name, const gchar *prefix,
   if (prefix && g_str_has_prefix(prefix, "_SDATA"))
     {
       id = g_strdup(prefix + sizeof("_SDATA"));
+      assert_zero(self, avro_value_add(priv_data->parent, id, &sd_element, NULL, NULL));
+      g_free(id);
     }
   else
     {
-      id = g_strdup(DEFAULT_SDATA_NAME);
+      assert_zero(self, avro_value_add(priv_data->parent, DEFAULT_SDATA_ID, &sd_element, NULL, NULL));
     }
 
-  assert_zero(self, avro_value_add(priv_data->parent, id, &sd_element, NULL, NULL));
   assert_zero(self, avro_value_add(&sd_element, name, &param_value, NULL, NULL));
   assert_zero(self, avro_value_set_string(&param_value, value));
-
-  g_free(id);
 
   return FALSE;
 }
@@ -503,6 +500,7 @@ avro_mod_dd_free(LogPipe *d)
   if (self->vp)
     value_pairs_free(self->vp);
 
+  g_free(DEFAULT_SDATA_ID);
   log_threaded_dest_driver_free(d);
 }
 
@@ -526,6 +524,8 @@ avro_mod_dd_new(GlobalConfig *cfg)
   log_template_options_defaults(&self->template_options);
   avro_mod_dd_set_value_pairs(&self->super.super.super,
                               value_pairs_new_default(cfg));
+
+  DEFAULT_SDATA_ID = g_strdup("_DEFAULT");
 
   return (LogDriver *)self;
 }
