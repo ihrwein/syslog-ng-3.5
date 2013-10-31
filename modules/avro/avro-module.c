@@ -28,11 +28,13 @@
 #include "messages.h"
 #include "misc.h"
 #include "stats.h"
+#include <fcntl.h>
 #include "logqueue.h"
 #include "plugin-types.h"
 #include "logthrdestdrv.h"
 #include "value-pairs.h"
 #include "vptransform.h"
+#include <sys/stat.h>
 #include <signal.h>
 #include <assert.h>
 
@@ -111,19 +113,6 @@ assert_not_null(AvroDriver *self, void *result)
   return result;
 }
 
-static int
-get_file_length(char *file_name)
-{
-  FILE *f = fopen(file_name, "rb");
-  if (!f)
-    return -1;
-
-  fseek(f, 0L, SEEK_END);
-  int size = ftell(f);
-  fclose(f);
-  return size;
-}
-
 static void
 fill_json_string_end_with_zeros(char* buffer, int size)
 {
@@ -139,17 +128,25 @@ fill_json_string_end_with_zeros(char* buffer, int size)
 static char*
 read_content_from_file(char *file_name)
 {
-  int read_bytes;
-  int file_size = get_file_length(file_name);
+  ssize_t read_bytes;
+  struct stat file_stat;
+  int file_size;
 
-  if (file_size < 0)
-    return NULL;
+  int f = open(file_name, O_RDONLY);
+
+  if (f == -1)
+    {
+      return NULL;
+    }
+
+  fstat(f, &file_stat);
+  file_size = file_stat.st_size;
   char *string = (char*) malloc(file_size * sizeof(char));
-  FILE *f = fopen(file_name, "rb");
-  read_bytes = fread(string, 1, file_size, f);
+
+  read_bytes = read(f, string, file_size);
   fill_json_string_end_with_zeros(string, file_size);
   assert(read_bytes == file_size);
-  fclose(f);
+  close(f);
   return string;
 }
 
@@ -181,15 +178,12 @@ avro_mod_dd_datafile_open(AvroDriver *self, char *filename)
       error |= assert_zero(self, avro_file_writer_create(filename, self->schema, &self->data_file_writer));
     }
 
-  free(schema_string);
-
   if (error)
     {
       msg_error("Unable to open Avro datafile",
                 evt_tag_str("driver", self->super.super.super.id),
                 evt_tag_str("filename", filename),
                 NULL);
-      return FALSE;
     }
 
   msg_verbose("Avro datafile has been opened",
@@ -197,6 +191,7 @@ avro_mod_dd_datafile_open(AvroDriver *self, char *filename)
               evt_tag_str("filename", filename),
               NULL);
 
+  free(schema_string);
   return (error == 0) ? TRUE : FALSE;
 }
 
@@ -353,7 +348,7 @@ typedef struct
 } _NVFunctionUserData;
 
 static gboolean
-vp_append_sdata_start(const gchar *name, const gchar *prefix,
+avro_mod_vp_obj_start(const gchar *name, const gchar *prefix,
                       gpointer *prefix_data, const gchar *prev,
                       gpointer *prev_data, gpointer user_data)
 {
@@ -361,7 +356,7 @@ vp_append_sdata_start(const gchar *name, const gchar *prefix,
 }
 
 static gboolean
-vp_append_sdata_end(const gchar *name, const gchar *prefix,
+avro_mod_vp_obj_end(const gchar *name, const gchar *prefix,
                       gpointer *prefix_data, const gchar *prev,
                       gpointer *prev_data, gpointer user_data)
 {
@@ -369,7 +364,7 @@ vp_append_sdata_end(const gchar *name, const gchar *prefix,
 }
 
 static gboolean
-vp_append_sdata_value(const gchar *name, const gchar *prefix,
+avro_mod_vp_obj_value(const gchar *name, const gchar *prefix,
                       TypeHint type, const gchar *value,
                       gpointer *prefix_data, gpointer user_data)
 {
@@ -414,14 +409,13 @@ avro_mod_dd_set_sdata(AvroDriver *self, avro_value_t *parent, LogMessage *logmsg
       priv_data.logmsg = logmsg;
 
       value_pairs_walk(self->vp,
-                       vp_append_sdata_start,
-                       vp_append_sdata_value,
-                       vp_append_sdata_end,
+                       avro_mod_vp_obj_start,
+                       avro_mod_vp_obj_value,
+                       avro_mod_vp_obj_end,
                        logmsg,
                        self->seq_num,
                        &self->template_options,
                        &priv_data);
-
     }
 
   return error;
@@ -493,7 +487,6 @@ avro_mod_dd_format_persist_name(LogThrDestDriver *s)
 
   return persist_name;
 }
-
 
 static gboolean
 avro_mod_dd_worker_insert(LogThrDestDriver *s)
@@ -586,10 +579,9 @@ static gboolean
 avro_mod_dd_deinit(LogPipe *s)
 {
   AvroDriver *self = (AvroDriver *)s;
-  int error;
 
   if (self->active_file_name->len > 0)
-    error = avro_mod_dd_datafile_close(self);
+    assert_zero(self, avro_mod_dd_datafile_close(self));
 
   g_string_free(self->active_file_name, TRUE);
   g_string_free(self->current_file_name, TRUE);
