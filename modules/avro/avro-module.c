@@ -334,12 +334,6 @@ avro_mod_vp_obj_start(const gchar *name, const gchar *prefix,
                       gpointer *prefix_data, const gchar *prev,
                       gpointer *prev_data, gpointer user_data)
 {
-  _NVFunctionUserData* priv_data = (_NVFunctionUserData*) user_data;
-  AvroDriver* self = priv_data->driver;
-  avro_value_t *parent = priv_data->parent;
-  LogMessage* logmsg = priv_data->logmsg;
-
-  avro_mod_dd_set_stamp(self, parent, logmsg);
   return FALSE;
 }
 
@@ -392,8 +386,8 @@ avro_mod_dd_set_sdata(AvroDriver *self, avro_value_t *parent, LogMessage *logmsg
 
   if (logmsg == NULL)
     {
-      error = assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
-      error = assert_zero(self, avro_value_set_null(&branch));
+      error |= assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
+      error |= assert_zero(self, avro_value_set_null(&branch));
     }
   else
     {
@@ -410,6 +404,8 @@ avro_mod_dd_set_sdata(AvroDriver *self, avro_value_t *parent, LogMessage *logmsg
                        self->seq_num,
                        &self->template_options,
                        &priv_data);
+
+      error |= avro_mod_dd_set_stamp(self, &branch, logmsg);
     }
 
   return error;
@@ -418,8 +414,11 @@ avro_mod_dd_set_sdata(AvroDriver *self, avro_value_t *parent, LogMessage *logmsg
 static gint
 avro_mod_dd_fill_msg(AvroDriver *self, LogMessage *logmsg, avro_value_t *avro_data)
 {
+  int error = 0;
 
-  return avro_mod_dd_set_sdata(self, avro_data, logmsg);
+  error |= avro_mod_dd_set_sdata(self, avro_data, logmsg);
+
+  return error;
 }
 
 static gchar *
