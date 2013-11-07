@@ -1,25 +1,21 @@
 {
-	"type" : "record",
-	"name" : "SYSLOG_MSG",
-	"namespace" : "hu.balabit",
-	"fields" : 
-	[
-    
-		{
-			"name" : "STRUCTURED_DATA",
-      "type" :
-      [
-      	"null",
-      	{
-	      	"type" : "map",
-	      	"values" :
-	      	{
-		      	"name" : "SD_PARAMS",
-		      	"type" : "map",
-		      	"values" : "string"
-	      	}
-      	}
-      ]
-    }
-	]
+    "type": "record",
+    "name": "LOG_MSG",
+    "namespace": "hu.balabit",
+    "fields": [
+        {
+            "name": "SDATA",
+            "type": [
+                "null",
+                {
+                    "type": "map",
+                    "values": {
+                        "name": "SD_PARAMS",
+                        "type": "map",
+                        "values": "string"
+                    }
+                }
+            ]
+        }
+    ]
 }

@@ -1,0 +1,30 @@
+{
+    "type" : "map",
+    "name" : "LOG_MSG",
+    "namespace" : "hu.balabit",
+    "values" :
+    [
+        "null",
+        "long",
+        "double",
+        "string",
+        "boolean",
+        {
+            "name": "_SDATA",
+            "type": "map",
+            "values":
+            [
+                "null",
+                {
+                    "type": "map",
+                    "values":
+                    {
+                        "name": "PARAMS",
+                        "type": "map",
+                        "values": "string"
+                    }
+                }
+            ]
+        }
+    ]
+}

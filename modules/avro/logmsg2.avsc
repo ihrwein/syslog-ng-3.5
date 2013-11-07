@@ -1,0 +1,49 @@
+{
+    "type" : "map",
+    "values" :
+    [
+        "null",
+        "long",
+        "double",
+        "string",
+        "boolean",
+        {
+            "type" : "array",
+            "items" :
+            {
+                "type" : "record",
+                "name" : "Json",
+                "namespace" : "org.apache.avro.data",
+                "fields" :
+                [
+                    {
+                        "name" : "value",
+                        "type" :
+                        [
+                            "null",
+                            "long",
+                            "double",
+                            "string",
+                            "boolean",
+                            {
+                                "type" : "array",
+                                "namespace" : "org.apache.avro.data",
+                                "items" : "Json"
+                            },
+                            {
+                                "type" : "map",
+                                "namespace" : "org.apache.avro.data",
+                                "values" : "Json"
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+             "type" : "map",
+             "namespace" : "org.apache.avro.data",
+             "values" : "Json"
+        }
+    ]
+}

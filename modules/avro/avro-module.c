@@ -375,14 +375,14 @@ avro_mod_vp_obj_value(const gchar *name, const gchar *prefix,
 }
 
 static gint
-avro_mod_dd_set_sdata(AvroDriver *self, avro_value_t *parent, LogMessage *logmsg)
+avro_mod_dd_fill_msg(AvroDriver *self, LogMessage *logmsg, avro_value_t *parent)
 {
   int error;
   avro_value_t field;
   avro_value_t branch;
   _NVFunctionUserData priv_data;
 
-  error = assert_zero(self, avro_value_get_by_name(parent, "STRUCTURED_DATA", &field, NULL));
+  error = assert_zero(self, avro_value_get_by_name(parent, "_SDATA", &field, NULL));
 
   if (logmsg == NULL)
     {
@@ -407,16 +407,6 @@ avro_mod_dd_set_sdata(AvroDriver *self, avro_value_t *parent, LogMessage *logmsg
 
       error |= avro_mod_dd_set_stamp(self, &branch, logmsg);
     }
-
-  return error;
-}
-
-static gint
-avro_mod_dd_fill_msg(AvroDriver *self, LogMessage *logmsg, avro_value_t *avro_data)
-{
-  int error = 0;
-
-  error |= avro_mod_dd_set_sdata(self, avro_data, logmsg);
 
   return error;
 }
