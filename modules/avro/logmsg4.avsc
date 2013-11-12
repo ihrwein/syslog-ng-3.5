@@ -1,0 +1,39 @@
+{
+    "type": "record",
+    "name": "LOG_MSG",
+    "namespace": "hu.balabit",
+    "fields": [
+        {
+            "name": "_SDATA",
+            "type": [
+                "null",
+                {
+                    "type": "map",
+                    "values": {
+                        "name": "SD_PARAMS",
+                        "type": "map",
+                        "values": "string"
+                    }
+                }
+            ]
+        },
+        {
+            "name" : "TAGS",
+            "default" : null,
+            "type" :
+            [
+                "null",
+                "string"
+            ]
+        },
+        {
+            "name" : "SOURCEIP",
+            "default" : null,
+            "type" :
+            [
+                "null",
+                "string"
+            ]
+        }
+    ]
+}

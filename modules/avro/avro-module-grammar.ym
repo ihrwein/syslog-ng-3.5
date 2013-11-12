@@ -45,6 +45,7 @@
 /* INCLUDE_DECLS */
 
 %token KW_AVRO
+%token KW_AVRO_FLAT_FIELD
 %token KW_AVRO_STAMP
 
 %%
@@ -63,14 +64,14 @@ avro_mod_options
 	;
 
 avro_mod_option
-	: KW_AVRO_STAMP '(' template_content ')' { avro_mod_dd_set_timestamp(last_driver, $3); }
+	: KW_AVRO_FLAT_FIELD '(' string ')' { avro_mod_dd_add_flat_field(last_driver, $3); free($3); }
+	| KW_AVRO_STAMP '(' template_content ')' { avro_mod_dd_set_timestamp(last_driver, $3); }
 	|  { last_template_options = avro_mod_dd_get_template_options(last_driver); } template_option
 	;
 
-
 avro_mod_file
         : template_content  { avro_mod_dd_set_destination_file(last_driver, $1);}
-         ;
+        ;
 
 /* INCLUDE_RULES */
 

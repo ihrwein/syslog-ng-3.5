@@ -29,10 +29,15 @@
 //#include "logmsg.h"
 #include <config.h>
 
-#define AVRO_SCHEMA_FILE  PATH_DATADIR "/syslog-ng/avro-schema/logmsg.avsc"
+#define AVRO_SCHEMA_FILE  PATH_DATADIR "/syslog-ng/avro-schema/logmsg4.avsc"
 
 #define NULL_BRANCH     0
 #define VALUE_BRANCH    1
+#define LONG_BRANCH     1
+#define DOUBLE_BRANCH   2
+#define STRING_BRANCH   3
+#define BOOLEAN_BRANCH  4
+
 
 #define SDATA_PREFIX  ".SDATA."
 
@@ -40,6 +45,7 @@ LogDriver *avro_mod_dd_new(GlobalConfig *cfg);
 
 void avro_mod_dd_set_destination_file(LogDriver *d, LogTemplate *filename);
 void avro_mod_dd_set_timestamp(LogDriver *d, LogTemplate *stamp);
+void avro_mod_dd_add_flat_field(LogDriver *d, gchar *name);
 LogTemplateOptions* avro_mod_dd_get_template_options(LogDriver *s);
 
 #endif

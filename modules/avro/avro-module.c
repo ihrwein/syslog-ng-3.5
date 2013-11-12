@@ -48,6 +48,7 @@ typedef struct
   avro_file_writer_t data_file_writer;
   avro_value_t avro_logmsg;
   gboolean is_datafile_opened;
+  GTree *flat_fields;
   LogTemplateOptions template_options;
   LogTemplate *file_name;
   GString *current_file_name;
@@ -58,6 +59,29 @@ typedef struct
 
   ValuePairs *vp;
 } AvroDriver;
+
+typedef struct
+{
+  gboolean is_appended;
+} FlatFliedState;
+
+FlatFliedState*
+flat_field_state_new()
+{
+  return g_new0(FlatFliedState, 1);
+}
+
+gboolean
+flat_field_state_is_appended(const FlatFliedState *self)
+{
+  return self->is_appended;
+}
+
+void
+flat_field_state_set_appended(FlatFliedState *self, gboolean is_appended)
+{
+  self->is_appended = is_appended;
+}
 
 /*
  * Called by YACC
@@ -79,6 +103,14 @@ avro_mod_dd_set_timestamp(LogDriver *d, LogTemplate *stamp)
 
   log_template_unref(self->timestamp);
   self->timestamp = log_template_ref(stamp);
+}
+
+void
+avro_mod_dd_add_flat_field(LogDriver *d, gchar *name)
+{
+  AvroDriver *self = (AvroDriver*) d;
+
+  g_tree_insert(self->flat_fields, name, flat_field_state_new());
 }
 
 void
@@ -154,8 +186,33 @@ read_whole_file(char *file_name)
   return string;
 }
 
+static gint
+avro_mod_dd_schema_open(AvroDriver *self)
+{
+  int error;
+  avro_schema_error_t schema_error;
+  char *schema_string = read_whole_file(AVRO_SCHEMA_FILE);
+
+  if (!schema_string)
+    {
+      msg_error("Unable to open Avro schema file",
+                evt_tag_str("driver", self->super.super.super.id),
+                evt_tag_str("filename", AVRO_SCHEMA_FILE),
+                NULL);
+      return -1;
+    }
+
+  error = assert_zero(self, avro_schema_from_json(schema_string, 0, &self->schema, &schema_error));
+  assert(self->schema != NULL);
+  assert_not_null(self, self->writer_iface = avro_generic_class_from_schema(self->schema));
+
+  free(schema_string);
+
+  return error;
+}
+
 static void
-avro_mod_dd_file_handle_errors(AvroDriver *self, char *filename, int error, const char *open_mode)
+avro_mod_dd_datafile_handle_errors(AvroDriver *self, char *filename, int error, const char *open_mode)
 {
   char buffer[256];
 
@@ -180,29 +237,29 @@ avro_mod_dd_file_handle_errors(AvroDriver *self, char *filename, int error, cons
 }
 
 static gint
-avro_mod_dd_file_open(AvroDriver *self, char *filename)
+avro_mod_dd_datafile_open(AvroDriver *self, char *filename)
 {
   int error;
 
   error =  assert_zero(self, avro_file_writer_open(filename, &self->data_file_writer));
-  avro_mod_dd_file_handle_errors(self, filename, error, "open");
+  avro_mod_dd_datafile_handle_errors(self, filename, error, "open");
 
   return error;
 }
 
 static gint
-avro_mod_dd_file_create(AvroDriver *self, char *filename)
+avro_mod_dd_datafile_create(AvroDriver *self, char *filename)
 {
   int error;
 
   error = assert_zero(self, avro_file_writer_create(filename, self->schema, &self->data_file_writer));
-  avro_mod_dd_file_handle_errors(self, filename, error, "create");
+  avro_mod_dd_datafile_handle_errors(self, filename, error, "create");
 
   return error;
 }
 
 static gint
-avro_mod_dd_file_create_or_open(AvroDriver *self, char *filename)
+avro_mod_dd_datafile_create_or_open(AvroDriver *self, char *filename)
 {
   int error = 0;
   gboolean is_file_exist;
@@ -216,7 +273,7 @@ avro_mod_dd_file_create_or_open(AvroDriver *self, char *filename)
 
       if (is_file_writable)
         {
-          error |= avro_mod_dd_file_open(self, filename);
+          error |= avro_mod_dd_datafile_open(self, filename);
         }
       else
         {
@@ -230,51 +287,25 @@ avro_mod_dd_file_create_or_open(AvroDriver *self, char *filename)
     }
   else
     {
-      error |= avro_mod_dd_file_create(self, filename);
+      error |= avro_mod_dd_datafile_create(self, filename);
     }
 
   return error;
 }
 
 static gint
-avro_mod_dd_datafile_open(AvroDriver *self, char *filename)
+avro_mod_dd_open(AvroDriver *self, char *filename)
 {
   int error;
-  avro_schema_error_t schema_error;
-  char *schema_string = read_whole_file(AVRO_SCHEMA_FILE);
 
-  if (!schema_string)
-    {
-      msg_error("Unable to open Avro schema file",
-                evt_tag_str("driver", self->super.super.super.id),
-                evt_tag_str("filename", AVRO_SCHEMA_FILE),
-                NULL);
-      return FALSE;
-    }
+  error = avro_mod_dd_schema_open(self);
+  error |= avro_mod_dd_datafile_create_or_open(self, filename);
 
-  error = assert_zero(self, avro_schema_from_json(schema_string, 0, &self->schema, &schema_error));
-  assert(self->schema != NULL);
-  assert_not_null(self, self->writer_iface = avro_generic_class_from_schema(self->schema));
-
-  error |= avro_mod_dd_file_create_or_open(self, filename);
-
-  free(schema_string);
   return error;
 }
 
 static gint
-avro_mod_dd_datafile_append_msg(AvroDriver *self, avro_value_t *avro_data)
-{
-  int error;
-
-  error = assert_zero(self, avro_file_writer_append_value(self->data_file_writer, avro_data));
-  error |= avro_value_reset(&self->avro_logmsg);
-
-  return error;
-}
-
-static int
-avro_mod_dd_datafile_close(AvroDriver *self)
+avro_mod_dd_close(AvroDriver *self)
 {
   int error;
 
@@ -303,6 +334,57 @@ avro_mod_dd_datafile_close(AvroDriver *self)
 }
 
 static gint
+avro_mod_dd_reopen(AvroDriver *self)
+{
+  gboolean is_same_file;
+  int error = 0;
+
+  is_same_file = g_string_equal(self->active_file_name, self->current_file_name);
+
+  if (!is_same_file || !self->is_datafile_opened)
+    {
+      if ((self->active_file_name->len > 0) && self->is_datafile_opened)
+        {
+          error |= avro_mod_dd_close(self);
+        }
+
+      g_string_assign(self->active_file_name, self->current_file_name->str);
+      error |= avro_mod_dd_open(self, self->active_file_name->str);
+    }
+
+  return error;
+}
+
+static gboolean
+avro_mod_dd_reset_flat_fields_foreach_func(gpointer key, gpointer value,
+                                           gpointer data)
+{
+  FlatFliedState *state = (FlatFliedState*) value;
+
+  flat_field_state_set_appended(state, FALSE);
+
+  return FALSE;
+}
+
+static void
+avro_mod_dd_reset_flat_fields(AvroDriver *self)
+{
+  g_tree_foreach(self->flat_fields, avro_mod_dd_reset_flat_fields_foreach_func, self);
+}
+
+static gint
+avro_mod_dd_append(AvroDriver *self, avro_value_t *avro_data)
+{
+  int error;
+
+  error = assert_zero(self, avro_file_writer_append_value(self->data_file_writer, avro_data));
+  avro_mod_dd_reset_flat_fields(self);
+  error |= avro_value_reset(&self->avro_logmsg);
+
+  return error;
+}
+
+static gint
 avro_mod_dd_set_stamp(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg)
 {
   int error = 0;
@@ -317,6 +399,69 @@ avro_mod_dd_set_stamp(AvroDriver* self, avro_value_t *parent, LogMessage *logmsg
       error |= assert_zero(self, avro_value_add(parent, DEFAULT_SDATA_ID, &sd_element, NULL, NULL));
       error |= assert_zero(self, avro_value_add(&sd_element, "TIMESTAMP", &param_value, NULL, NULL));
       error |= assert_zero(self, avro_value_set_string(&param_value, self->current_timestamp->str));
+    }
+
+  return error;
+}
+
+/*static gint
+avro_mod_dd_close_branch(avro_value_t *field, avro_value_t *branch)
+{
+  int error;
+
+  error = assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
+  error |= assert_zero(self, avro_value_set_null(&branch));
+
+  return error;
+}*/
+
+static gboolean
+avro_mod_dd_close_unused_flat_fields_foreach_func(gpointer key, gpointer value,
+                                     gpointer data)
+{
+  int error;
+  avro_value_t field;
+  avro_value_t branch;
+  FlatFliedState *state = (FlatFliedState*) value;
+  AvroDriver *self = (AvroDriver*) data;
+
+  if (!flat_field_state_is_appended(state))
+    {
+      error = avro_value_get_by_name(&self->avro_logmsg, key, &field, NULL);
+      error |= assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
+      error |= assert_zero(self, avro_value_set_null(&branch));
+      flat_field_state_set_appended(state, TRUE);
+    }
+
+  return FALSE;
+}
+
+static void
+avro_mod_dd_close_unused_flat_fields(AvroDriver *self)
+{
+  g_tree_foreach(self->flat_fields, avro_mod_dd_close_unused_flat_fields_foreach_func, self);
+}
+
+static gint
+avro_mod_dd_append_string(AvroDriver *self, avro_value_t *parent,
+                          LogMessage *logmsg, const char *name,
+                          const char *value)
+{
+  int error;
+  avro_value_t field;
+  avro_value_t branch;
+
+  error = avro_value_get_by_name(parent, name, &field, NULL);
+
+  if (logmsg != NULL && name != NULL  && value != NULL)
+    {
+      error |= assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
+      error |= assert_zero(self, avro_value_set_string(&branch, value));
+    }
+  else
+    {
+      error |= assert_zero(self, avro_value_set_branch(&field, NULL_BRANCH, &branch));
+      error |= assert_zero(self, avro_value_set_null(&branch));
     }
 
   return error;
@@ -346,30 +491,58 @@ avro_mod_vp_obj_end(const gchar *name, const gchar *prefix,
 }
 
 static gboolean
-avro_mod_vp_obj_value(const gchar *name, const gchar *prefix,
-                      TypeHint type, const gchar *value,
-                      gpointer *prefix_data, gpointer user_data)
+avro_mod_dd_append_sdata(AvroDriver *self, avro_value_t *parent,
+                         LogMessage *logmsg, const gchar *prefix,
+                         const char *name, const gchar *value)
 {
   gchar *id = NULL;
   avro_value_t sd_element;
   avro_value_t param_value;
-  _NVFunctionUserData* priv_data = (_NVFunctionUserData*) user_data;
-  AvroDriver* self = priv_data->driver;
+  int error;
 
   if (prefix && g_str_has_prefix(prefix, "_SDATA"))
     {
       id = g_strdup(prefix + sizeof("_SDATA"));
-      assert_zero(self, avro_value_add(priv_data->parent, id, &sd_element, NULL, NULL));
+      error = assert_zero(self, avro_value_add(parent, id, &sd_element, NULL, NULL));
     }
   else
     {
-      assert_zero(self, avro_value_add(priv_data->parent, DEFAULT_SDATA_ID, &sd_element, NULL, NULL));
+     error = assert_zero(self, avro_value_add(parent, DEFAULT_SDATA_ID, &sd_element, NULL, NULL));
     }
 
-  assert_zero(self, avro_value_add(&sd_element, name, &param_value, NULL, NULL));
-  assert_zero(self, avro_value_set_string(&param_value, value));
+  error |= assert_zero(self, avro_value_add(&sd_element, name, &param_value, NULL, NULL));
+  error |= assert_zero(self, avro_value_set_string(&param_value, value));
 
   g_free(id);
+
+  return FALSE;
+}
+
+static FlatFliedState*
+avro_mod_dd_get_flat_field_state(AvroDriver *self, const gchar *name)
+{
+  return g_tree_lookup(self->flat_fields, name);
+}
+
+static gboolean
+avro_mod_vp_obj_value(const gchar *name, const gchar *prefix,
+                      TypeHint type, const gchar *value,
+                      gpointer *prefix_data, gpointer user_data)
+{
+  _NVFunctionUserData* priv_data = (_NVFunctionUserData*) user_data;
+  AvroDriver* self = priv_data->driver;
+
+  FlatFliedState *state = avro_mod_dd_get_flat_field_state(self, name);
+
+  if (state != NULL)
+    {
+      avro_mod_dd_append_string(self, &self->avro_logmsg, priv_data->logmsg, name, value);
+      flat_field_state_set_appended(state, TRUE);
+    }
+  else
+    {
+      avro_mod_dd_append_sdata(self, priv_data->parent, priv_data->logmsg, prefix, name, value);
+    }
 
   return FALSE;
 }
@@ -392,6 +565,7 @@ avro_mod_dd_fill_msg(AvroDriver *self, LogMessage *logmsg, avro_value_t *parent)
   else
     {
       assert_zero(self, avro_value_set_branch(&field, VALUE_BRANCH, &branch));
+
       priv_data.driver = self;
       priv_data.parent = &branch;
       priv_data.logmsg = logmsg;
@@ -435,34 +609,12 @@ avro_mod_dd_format_persist_name(LogThrDestDriver *s)
   return persist_name;
 }
 
-int
-avro_mod_dd_file_reopen_when_needed(AvroDriver *self)
-{
-  gboolean is_same_file;
-  int error = 0;
-
-  is_same_file = g_string_equal(self->active_file_name, self->current_file_name);
-
-  if (!is_same_file || !self->is_datafile_opened)
-    {
-      if ((self->active_file_name->len > 0) && self->is_datafile_opened)
-        {
-          error |= avro_mod_dd_datafile_close(self);
-        }
-
-      g_string_assign(self->active_file_name, self->current_file_name->str);
-      error |= avro_mod_dd_datafile_open(self, self->active_file_name->str);
-    }
-
-  return error;
-}
-
 static gboolean
 avro_mod_dd_worker_insert(LogThrDestDriver *s)
 {
+  int error;
   gboolean success;
   LogMessage *msg;
-  int error;
   AvroDriver *self = (AvroDriver*) s;
 
   LogPathOptions path_options = LOG_PATH_OPTIONS_INIT;
@@ -475,12 +627,13 @@ avro_mod_dd_worker_insert(LogThrDestDriver *s)
   log_template_format(self->file_name, msg, &self->template_options, LTZ_SEND,
                       self->seq_num, NULL, self->current_file_name);
 
-  error = avro_mod_dd_file_reopen_when_needed(self);
+  error = avro_mod_dd_reopen(self);
 
   if (!error)
     {
       error |= avro_mod_dd_fill_msg(self, msg, &self->avro_logmsg);
-      error |= avro_mod_dd_datafile_append_msg(self, &self->avro_logmsg);
+      avro_mod_dd_close_unused_flat_fields(self);
+      error |= avro_mod_dd_append(self, &self->avro_logmsg);
     }
 
   success = (error == 0) ? TRUE : FALSE;
@@ -541,7 +694,7 @@ avro_mod_dd_deinit(LogPipe *s)
   AvroDriver *self = (AvroDriver *)s;
 
   if (self->active_file_name->len > 0)
-    assert_zero(self, avro_mod_dd_datafile_close(self));
+    assert_zero(self, avro_mod_dd_close(self));
 
   g_string_free(self->active_file_name, TRUE);
   g_string_free(self->current_file_name, TRUE);
@@ -562,6 +715,8 @@ avro_mod_dd_free(LogPipe *d)
   log_template_unref(self->timestamp);
   if (self->vp)
     value_pairs_free(self->vp);
+
+  g_tree_unref(self->flat_fields);
 
   log_threaded_dest_driver_free(d);
 }
@@ -586,6 +741,11 @@ avro_mod_dd_new(GlobalConfig *cfg)
   log_template_options_defaults(&self->template_options);
   avro_mod_dd_set_value_pairs(&self->super.super.super,
                               value_pairs_new_default(cfg));
+
+  self->flat_fields = g_tree_new((GCompareFunc)g_ascii_strcasecmp);
+  // TODO: move to config file
+  g_tree_insert(self->flat_fields, "SOURCEIP", flat_field_state_new());
+  g_tree_insert(self->flat_fields, "TAGS", flat_field_state_new());
 
   return (LogDriver *)self;
 }

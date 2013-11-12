@@ -31,6 +31,7 @@ int avro_mod_parse(CfgLexer *lexer, LogDriver **instance, gpointer arg);
 
 static CfgLexerKeyword avro_mod_keywords[] = {
   { "stamp",                    KW_AVRO_STAMP },
+  { "flat-field",               KW_AVRO_FLAT_FIELD },
   { "avro",			KW_AVRO },
   { NULL },
 };
